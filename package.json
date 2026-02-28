@@ -12,6 +12,7 @@
     "seed:enrich-igdb": "node --env-file=.env --experimental-strip-types --experimental-specifier-resolution=node scripts/enrich-igdb-covers.ts",
     "seed:backfill-steam": "node --env-file=.env --experimental-strip-types --experimental-specifier-resolution=node scripts/backfill-steam-covers.ts",
     "seed:report-missing": "node --env-file=.env --experimental-strip-types --experimental-specifier-resolution=node scripts/report-missing-covers.ts",
+    "seed:prune-missing": "node --env-file=.env --experimental-strip-types --experimental-specifier-resolution=node scripts/prune-missing-covers.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

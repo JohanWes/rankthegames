@@ -4,20 +4,31 @@ import { getGamesCollection } from "./collections.ts";
 const LADDER_SNAPSHOT_TTL_MS = 30_000;
 export const MAX_RUN_ROUNDS = 10;
 const SELECTION_POOL_SIZE = 20;
-const STARTING_PAIR_MAX_SCORE_GAP = 150;
-const EXPANSION_STEP_PERCENTILE = 5;
-const MAX_BUCKET_EXPANSIONS = 3;
+const STARTING_PAIR_MAX_SCORE_GAP = 125;
+const CORE_SCORE_RADIUS = 100;
+const CORE_RADIUS_EXPANSION_STEP = 25;
+const MAX_CORE_SCORE_RADIUS = 175;
+const OUTLIER_MIN_SCORE_GAP = 200;
+const OUTLIER_MAX_SCORE_GAP = 400;
+const MAX_OUTLIERS_PER_RUN = 2;
+const ANCHOR_MIN_PERCENTILE = 15;
+const ANCHOR_MAX_PERCENTILE = 85;
+const OPENING_BUCKET_LABEL = "cluster:opening";
 
-export const RUN_BAND_MODEL = "percentile.v1";
+export const RUN_BAND_MODEL = "score_cluster.v1";
 
-type BucketWindow = {
-  minPercentile: number;
-  maxPercentile: number;
+type ScoreWindow = {
+  minScore: number;
+  maxScore: number;
 };
 
-type BucketDefinition = {
-  round: number;
-  target: BucketWindow;
+type ClusterPlan = {
+  anchorGame: LadderSnapshotGame;
+  anchorScore: number;
+  coreWindow: ScoreWindow;
+  coreCandidates: LadderSnapshotGame[];
+  outlierCandidates: LadderSnapshotGame[];
+  desiredOutlierCount: number;
 };
 
 export type LadderSnapshotGame = {
@@ -67,21 +78,6 @@ export type BuiltRunDefinition = {
   gameIds: string[];
 };
 
-const RUN_BUCKETS: BucketDefinition[] = [
-  { round: 1, target: { minPercentile: 8, maxPercentile: 15 } },
-  { round: 2, target: { minPercentile: 13, maxPercentile: 23 } },
-  { round: 3, target: { minPercentile: 20, maxPercentile: 30 } },
-  { round: 4, target: { minPercentile: 27, maxPercentile: 38 } },
-  { round: 5, target: { minPercentile: 35, maxPercentile: 48 } },
-  { round: 6, target: { minPercentile: 45, maxPercentile: 58 } },
-  { round: 7, target: { minPercentile: 55, maxPercentile: 70 } },
-  { round: 8, target: { minPercentile: 65, maxPercentile: 80 } },
-  { round: 9, target: { minPercentile: 78, maxPercentile: 90 } },
-  { round: 10, target: { minPercentile: 88, maxPercentile: 100 } }
-];
-
-const RUN_BUCKET_LABELS = RUN_BUCKETS.map((bucket) => formatBucketWindow(bucket.target));
-
 let cachedLadderSnapshot: LadderSnapshot | null = null;
 let ladderSnapshotPromise: Promise<LadderSnapshot> | null = null;
 
@@ -92,7 +88,7 @@ export async function createRunDefinition(): Promise<BuiltRunDefinition> {
 
 export function getRoundBucketLabel(round: number, challengerQueue?: Array<{ round: number; bucket: string }>) {
   if (round === 1) {
-    return RUN_BUCKET_LABELS[0];
+    return OPENING_BUCKET_LABEL;
   }
 
   const challenger = challengerQueue?.find((entry) => entry.round === round);
@@ -205,36 +201,51 @@ async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshot> {
   };
 }
 
-function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition {
+export function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition {
   if (snapshot.games.length < MAX_RUN_ROUNDS + 1) {
     throw new Error("Not enough games are available to build a full run.");
   }
 
   const usedGameIds = new Set<string>();
   const issuedGameIds: string[] = [];
-  const initialRange = resolveCandidateRange(snapshot.games, RUN_BUCKETS[0].target, usedGameIds, 2);
-  const initialPair = pickStartingPair(initialRange.candidates);
+  const clusterPlan = buildClusterPlan(snapshot.games);
+  const initialPair = pickStartingPair(clusterPlan.coreCandidates);
 
   usedGameIds.add(initialPair.left.id);
   usedGameIds.add(initialPair.right.id);
   issuedGameIds.push(initialPair.left.id, initialPair.right.id);
 
-  const challengerQueue = RUN_BUCKETS.slice(1).map((bucketDefinition) => {
-    const resolvedRange = resolveCandidateRange(
-      snapshot.games,
-      bucketDefinition.target,
-      usedGameIds,
-      1
-    );
-    const challenger = pickCandidate(resolvedRange.candidates);
+  const outlierSelections = pickOutlierCandidates(clusterPlan, usedGameIds);
+  for (const outlier of outlierSelections) {
+    usedGameIds.add(outlier.id);
+  }
 
+  const coreChallengerCount = MAX_RUN_ROUNDS - 1 - outlierSelections.length;
+  const coreChallengers = pickDistinctCandidates(
+    prioritizeCoreCandidates(clusterPlan.coreCandidates, clusterPlan.anchorScore).filter(
+      (candidate) => !usedGameIds.has(candidate.id)
+    ),
+    coreChallengerCount
+  );
+
+  for (const challenger of coreChallengers) {
     usedGameIds.add(challenger.id);
-    issuedGameIds.push(challenger.id);
+  }
+
+  const challengerEntries = arrangeChallengers(
+    coreChallengers,
+    outlierSelections,
+    clusterPlan.coreWindow,
+    clusterPlan.anchorScore
+  );
+
+  const challengerQueue = challengerEntries.map((entry, index) => {
+    issuedGameIds.push(entry.game.id);
 
     return {
-      round: bucketDefinition.round,
-      gameId: challenger.id,
-      bucket: formatBucketWindow(resolvedRange.window)
+      round: index + 2,
+      gameId: entry.game.id,
+      bucket: entry.bucket
     };
   });
 
@@ -280,69 +291,110 @@ function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition {
   };
 }
 
-function resolveCandidateRange(
-  games: LadderSnapshotGame[],
-  target: BucketWindow,
-  usedGameIds: Set<string>,
-  minimumCount: number
-) {
-  for (let expansion = 0; expansion <= MAX_BUCKET_EXPANSIONS; expansion += 1) {
-    const window = widenBucketWindow(target, expansion * EXPANSION_STEP_PERCENTILE);
-    const candidates = getEligibleCandidates(games, window, usedGameIds);
+function buildClusterPlan(games: LadderSnapshotGame[]): ClusterPlan {
+  const totalGamesNeeded = MAX_RUN_ROUNDS + 1;
+  const anchorCandidates = getAnchorCandidates(games);
 
-    if (candidates.length >= minimumCount) {
-      return { window, candidates };
+  for (
+    let scoreRadius = CORE_SCORE_RADIUS;
+    scoreRadius <= MAX_CORE_SCORE_RADIUS;
+    scoreRadius += CORE_RADIUS_EXPANSION_STEP
+  ) {
+    const viablePlans = anchorCandidates
+      .map((anchorGame) => {
+        const coreWindow = {
+          minScore: Math.max(1, anchorGame.snapshotScore - scoreRadius),
+          maxScore: anchorGame.snapshotScore + scoreRadius
+        };
+        const coreCandidates = games.filter((game) =>
+          isScoreInWindow(game.snapshotScore, coreWindow)
+        );
+        const outlierCandidates = games.filter((game) =>
+          isOutlierCandidate(game, anchorGame.snapshotScore, coreWindow)
+        );
+        const desiredOutlierCount = determineOutlierCount(
+          coreCandidates.length,
+          outlierCandidates.length,
+          totalGamesNeeded
+        );
+
+        if (coreCandidates.length < totalGamesNeeded - desiredOutlierCount) {
+          return null;
+        }
+
+        return {
+          anchorGame,
+          anchorScore: anchorGame.snapshotScore,
+          coreWindow,
+          coreCandidates,
+          outlierCandidates,
+          desiredOutlierCount
+        } satisfies ClusterPlan;
+      })
+      .filter((plan): plan is ClusterPlan => plan !== null)
+      .sort((left, right) => {
+        if (left.desiredOutlierCount !== right.desiredOutlierCount) {
+          return right.desiredOutlierCount - left.desiredOutlierCount;
+        }
+
+        if (left.anchorGame.totalAppearances !== right.anchorGame.totalAppearances) {
+          return left.anchorGame.totalAppearances - right.anchorGame.totalAppearances;
+        }
+
+        const leftCentrality = Math.abs(left.anchorGame.percentileFromBottom - 50);
+        const rightCentrality = Math.abs(right.anchorGame.percentileFromBottom - 50);
+
+        if (leftCentrality !== rightCentrality) {
+          return leftCentrality - rightCentrality;
+        }
+
+        return left.anchorGame.id.localeCompare(right.anchorGame.id);
+      });
+
+    if (viablePlans.length > 0) {
+      return sample(viablePlans.slice(0, Math.min(SELECTION_POOL_SIZE, viablePlans.length)));
     }
   }
 
-  const fallback = findNearestNeighboringWindow(games, target, usedGameIds, minimumCount);
-
-  if (!fallback) {
-    throw new Error(`Unable to find enough games for bucket ${formatBucketWindow(target)}.`);
-  }
-
-  return fallback;
+  throw new Error("Unable to build a clustered run pool from the current ladder snapshot.");
 }
 
-function findNearestNeighboringWindow(
-  games: LadderSnapshotGame[],
-  target: BucketWindow,
-  usedGameIds: Set<string>,
-  minimumCount: number
-) {
-  for (let offset = EXPANSION_STEP_PERCENTILE; offset <= 100; offset += EXPANSION_STEP_PERCENTILE) {
-    const candidateWindows = [
-      shiftBucketWindow(target, -offset),
-      shiftBucketWindow(target, offset)
-    ].filter((window): window is BucketWindow => window !== null);
-
-    for (const window of candidateWindows) {
-      const candidates = getEligibleCandidates(games, window, usedGameIds);
-
-      if (candidates.length >= minimumCount) {
-        return { window, candidates };
-      }
-    }
-  }
-
-  return null;
-}
-
-function getEligibleCandidates(
-  games: LadderSnapshotGame[],
-  window: BucketWindow,
-  usedGameIds: Set<string>
-) {
-  return games.filter(
+function getAnchorCandidates(games: LadderSnapshotGame[]) {
+  const prioritized = prioritizeByExposure(games).filter(
     (game) =>
-      game.percentileFromBottom >= window.minPercentile &&
-      game.percentileFromBottom <= window.maxPercentile &&
-      !usedGameIds.has(game.id)
+      game.percentileFromBottom >= ANCHOR_MIN_PERCENTILE &&
+      game.percentileFromBottom <= ANCHOR_MAX_PERCENTILE
+  );
+
+  return prioritized.length > 0 ? prioritized : prioritizeByExposure(games);
+}
+
+function determineOutlierCount(coreCount: number, outlierCount: number, totalGamesNeeded: number) {
+  for (let desiredCount = MAX_OUTLIERS_PER_RUN; desiredCount >= 0; desiredCount -= 1) {
+    if (outlierCount >= desiredCount && coreCount >= totalGamesNeeded - desiredCount) {
+      return desiredCount;
+    }
+  }
+
+  return 0;
+}
+
+function isScoreInWindow(score: number, window: ScoreWindow) {
+  return score >= window.minScore && score <= window.maxScore;
+}
+
+function isOutlierCandidate(game: LadderSnapshotGame, anchorScore: number, coreWindow: ScoreWindow) {
+  const scoreGap = Math.abs(game.snapshotScore - anchorScore);
+
+  return (
+    !isScoreInWindow(game.snapshotScore, coreWindow) &&
+    scoreGap >= OUTLIER_MIN_SCORE_GAP &&
+    scoreGap <= OUTLIER_MAX_SCORE_GAP
   );
 }
 
 function pickStartingPair(candidates: LadderSnapshotGame[]) {
-  const prioritizedPool = prioritizeCandidates(candidates).slice(0, SELECTION_POOL_SIZE);
+  const prioritizedPool = prioritizeByExposure(candidates).slice(0, SELECTION_POOL_SIZE);
 
   if (prioritizedPool.length < 2) {
     throw new Error("Not enough eligible games were available to choose an opening pair.");
@@ -386,17 +438,150 @@ function sampleAllPairs(pool: LadderSnapshotGame[]) {
   throw new Error("Unable to sample a starting pair.");
 }
 
-function pickCandidate(candidates: LadderSnapshotGame[]) {
-  const prioritizedPool = prioritizeCandidates(candidates).slice(0, SELECTION_POOL_SIZE);
-
-  if (prioritizedPool.length === 0) {
-    throw new Error("No eligible candidates were available for this round.");
+function pickOutlierCandidates(plan: ClusterPlan, usedGameIds: Set<string>) {
+  if (plan.desiredOutlierCount === 0) {
+    return [] as LadderSnapshotGame[];
   }
 
-  return sample(prioritizedPool);
+  const lowerOutliers = prioritizeOutlierCandidates(
+    plan.outlierCandidates.filter(
+      (game) => game.snapshotScore < plan.coreWindow.minScore && !usedGameIds.has(game.id)
+    ),
+    plan.anchorScore
+  );
+  const higherOutliers = prioritizeOutlierCandidates(
+    plan.outlierCandidates.filter(
+      (game) => game.snapshotScore > plan.coreWindow.maxScore && !usedGameIds.has(game.id)
+    ),
+    plan.anchorScore
+  );
+  const selections: LadderSnapshotGame[] = [];
+
+  if (plan.desiredOutlierCount === 2 && lowerOutliers.length > 0 && higherOutliers.length > 0) {
+    selections.push(sample(lowerOutliers.slice(0, Math.min(SELECTION_POOL_SIZE, lowerOutliers.length))));
+    selections.push(
+      sample(higherOutliers.slice(0, Math.min(SELECTION_POOL_SIZE, higherOutliers.length)))
+    );
+    return selections;
+  }
+
+  const combined = prioritizeOutlierCandidates(
+    [...lowerOutliers, ...higherOutliers],
+    plan.anchorScore
+  );
+
+  return pickDistinctCandidates(combined, plan.desiredOutlierCount);
 }
 
-function prioritizeCandidates(candidates: LadderSnapshotGame[]) {
+function arrangeChallengers(
+  coreChallengers: LadderSnapshotGame[],
+  outlierSelections: LadderSnapshotGame[],
+  coreWindow: ScoreWindow,
+  anchorScore: number
+) {
+  const entries = coreChallengers.map((game) => ({
+    game,
+    bucket: formatCoreBucketWindow(coreWindow)
+  }));
+
+  if (outlierSelections.length === 0) {
+    return entries;
+  }
+
+  const insertionIndexes = getOutlierInsertionIndexes(entries.length, outlierSelections.length);
+
+  outlierSelections.forEach((game, index) => {
+    const insertionIndex = Math.min(insertionIndexes[index], entries.length);
+    entries.splice(insertionIndex, 0, {
+      game,
+      bucket: formatOutlierBucket(game.snapshotScore, anchorScore)
+    });
+  });
+
+  return entries;
+}
+
+function getOutlierInsertionIndexes(coreCount: number, outlierCount: number) {
+  if (outlierCount === 1) {
+    return [Math.max(1, Math.floor(coreCount / 2))];
+  }
+
+  return [
+    Math.max(1, Math.floor(coreCount / 3)),
+    Math.max(2, Math.floor((coreCount * 2) / 3) + 1)
+  ];
+}
+
+function pickDistinctCandidates(candidates: LadderSnapshotGame[], count: number) {
+  if (count === 0) {
+    return [] as LadderSnapshotGame[];
+  }
+
+  const selectionPool = candidates.slice(0, Math.max(count, Math.min(SELECTION_POOL_SIZE, candidates.length)));
+
+  if (selectionPool.length < count) {
+    throw new Error("Not enough eligible games were available to fill the run definition.");
+  }
+
+  return sampleWithoutReplacement(selectionPool, count);
+}
+
+function sampleWithoutReplacement<T>(values: readonly T[], count: number) {
+  const pool = [...values];
+  const selected: T[] = [];
+
+  while (selected.length < count) {
+    const nextIndex = Math.floor(Math.random() * pool.length);
+    const [nextValue] = pool.splice(nextIndex, 1);
+    selected.push(nextValue);
+  }
+
+  return selected;
+}
+
+function prioritizeCoreCandidates(candidates: LadderSnapshotGame[], anchorScore: number) {
+  return [...candidates].sort((left, right) => {
+    if (left.totalAppearances !== right.totalAppearances) {
+      return left.totalAppearances - right.totalAppearances;
+    }
+
+    const leftDistance = Math.abs(left.snapshotScore - anchorScore);
+    const rightDistance = Math.abs(right.snapshotScore - anchorScore);
+
+    if (leftDistance !== rightDistance) {
+      return leftDistance - rightDistance;
+    }
+
+    if (left.snapshotScore !== right.snapshotScore) {
+      return left.snapshotScore - right.snapshotScore;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function prioritizeOutlierCandidates(candidates: LadderSnapshotGame[], anchorScore: number) {
+  return [...candidates].sort((left, right) => {
+    if (left.totalAppearances !== right.totalAppearances) {
+      return left.totalAppearances - right.totalAppearances;
+    }
+
+    const leftGapDistance = Math.abs(
+      Math.abs(left.snapshotScore - anchorScore) - getPreferredOutlierGap(anchorScore)
+    );
+    const rightGapDistance = Math.abs(
+      Math.abs(right.snapshotScore - anchorScore) - getPreferredOutlierGap(anchorScore)
+    );
+
+    if (leftGapDistance !== rightGapDistance) {
+      return leftGapDistance - rightGapDistance;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function prioritizeByExposure(candidates: LadderSnapshotGame[]) {
   return [...candidates].sort((left, right) => {
     if (left.totalAppearances !== right.totalAppearances) {
       return left.totalAppearances - right.totalAppearances;
@@ -418,36 +603,17 @@ function getPercentileFromBottom(index: number, totalGames: number) {
   return Number((((totalGames - index) / totalGames) * 100).toFixed(3));
 }
 
-function widenBucketWindow(window: BucketWindow, delta: number): BucketWindow {
-  return {
-    minPercentile: Math.max(0, window.minPercentile - delta),
-    maxPercentile: Math.min(100, window.maxPercentile + delta)
-  };
+function getPreferredOutlierGap(_anchorScore: number) {
+  return 300;
 }
 
-function shiftBucketWindow(window: BucketWindow, delta: number): BucketWindow | null {
-  const width = window.maxPercentile - window.minPercentile;
-  const shiftedMin = window.minPercentile + delta;
-  const shiftedMax = window.maxPercentile + delta;
-
-  if (shiftedMax <= 0 || shiftedMin >= 100) {
-    return null;
-  }
-
-  const minPercentile = Math.max(0, shiftedMin);
-  const maxPercentile = Math.min(100, shiftedMax);
-
-  if (maxPercentile - minPercentile < width / 2) {
-    return null;
-  }
-
-  return { minPercentile, maxPercentile };
+function formatCoreBucketWindow(window: ScoreWindow) {
+  return `cluster:${window.minScore}-${window.maxScore}`;
 }
 
-function formatBucketWindow(window: BucketWindow) {
-  return `${formatPercentile(window.minPercentile)}-${formatPercentile(window.maxPercentile)}`;
-}
+function formatOutlierBucket(score: number, anchorScore: number) {
+  const delta = score - anchorScore;
+  const direction = delta >= 0 ? "+" : "";
 
-function formatPercentile(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+  return `outlier:${direction}${delta}`;
 }

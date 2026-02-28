@@ -29,6 +29,7 @@ export function parseCliArgs(): ParsedCliArgs {
     allowPositionals: true,
     options: {
       reset: { type: "boolean" },
+      "dry-run": { type: "boolean" },
       output: { type: "string" },
       format: { type: "string" },
       file: { type: "string" },
