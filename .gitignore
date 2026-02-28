@@ -1,0 +1,14 @@
+.next
+node_modules
+coverage
+dist
+out
+*.log
+.DS_Store
+.env*
+!.env.example
+PLAN.md
+GAMELOOP.md
+FRONTENDSPECS.md
+BACKENDSPECS.md
+top_1000_popular_games.txt
