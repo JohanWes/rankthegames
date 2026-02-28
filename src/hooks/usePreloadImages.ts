@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import type { RunGame, RunChallenger } from "@/lib/types";
 
-const PRELOAD_AHEAD = 3;
+const PRELOAD_AHEAD = 10;
 
 export function usePreloadImages(
   currentRound: number,

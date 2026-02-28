@@ -21,6 +21,7 @@ type GameCardProps = {
   showScore?: boolean;
   position: "left" | "right";
   isHigher?: boolean;
+  priority?: boolean;
 };
 
 const borderColors: Record<GameCardState, string> = {
@@ -137,6 +138,7 @@ export function GameCard({
   showScore = false,
   position,
   isHigher = false,
+  priority = false,
 }: GameCardProps) {
   const canClick = !disabled && state === "idle" && !!onSelect;
   const showResult = state === "correct" || state === "incorrect";
@@ -169,7 +171,8 @@ export function GameCard({
           fill
           className="object-cover"
           sizes="(max-width: 768px) 50vw, 40vw"
-          priority={position === "left"}
+          priority={priority}
+          unoptimized
         />
       ) : (
         /* Gradient fallback with gamepad icon */

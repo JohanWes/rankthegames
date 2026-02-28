@@ -155,6 +155,7 @@ export default function GamePage() {
               onSelect={() => game.selectGame(game.leftGame!.id)}
               disabled={game.phase !== "AWAITING_CHOICE"}
               showScore={showScores}
+              priority={game.currentRound === 1}
             />
           </div>
         )}
@@ -170,6 +171,7 @@ export default function GamePage() {
               onSelect={() => game.selectGame(game.rightGame!.id)}
               disabled={game.phase !== "AWAITING_CHOICE"}
               showScore={showScores}
+              priority={game.currentRound === 1}
             />
           </div>
         )}

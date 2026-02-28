@@ -24,6 +24,15 @@ export function warmRunPrefetch(): Promise<CreateRunResponse> {
     prefetchedRunPromise = requestRun()
       .then((data) => {
         prefetchedRun = data;
+
+        // Preload all game images while the user is still on the landing page
+        for (const game of Object.values(data.games)) {
+          if (game.imageUrl) {
+            const img = new Image();
+            img.src = game.imageUrl;
+          }
+        }
+
         return data;
       })
       .catch((error) => {
