@@ -1,6 +1,5 @@
 import {
   MongoClient,
-  ServerApiVersion,
   type ClientSession,
   type Db,
   type MongoClientOptions
@@ -8,11 +7,9 @@ import {
 import { env } from "./env.ts";
 
 const clientOptions: MongoClientOptions = {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true
-  }
+  maxPoolSize: 10,
+  minPoolSize: 1,
+  maxIdleTimeMS: 30_000
 };
 
 declare global {
