@@ -51,7 +51,7 @@ export function GameOverModal({
         <button
           type="button"
           onClick={onPlayAgain}
-          className="mt-8 w-full rounded-full bg-gradient-to-r from-neon-cyan to-neon-purple px-8 py-3 font-display text-xl font-bold text-bg-deep transition-transform hover:scale-105 active:scale-95"
+          className="mt-8 w-full rounded-full border border-accent/60 bg-accent/10 px-8 py-3 font-display text-xl font-bold text-accent transition-all hover:bg-accent/20 hover:border-accent"
         >
           PLAY AGAIN
         </button>
@@ -59,7 +59,7 @@ export function GameOverModal({
         {/* Leaderboard link */}
         <Link
           href="/leaderboard"
-          className="mt-4 inline-block text-sm text-text-secondary underline underline-offset-4 transition-colors hover:text-neon-cyan"
+          className="mt-4 inline-block text-sm text-text-secondary underline underline-offset-4 transition-colors hover:text-accent"
         >
           View Leaderboard
         </Link>

@@ -1,4 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../lib/env", () => ({
+  env: {
+    NODE_ENV: "test",
+    MONGODB_URI: "mongodb://localhost:27017",
+    MONGODB_DB_NAME: "test",
+    RUN_TOKEN_SECRET: "test-secret-key-for-testing-only-32chars",
+    IP_HASH_SALT: "test-salt-key-for-testing-only-32chars",
+    IGDB_CLIENT_ID: "test-igdb-client-id",
+    IGDB_CLIENT_SECRET: "test-igdb-client-secret"
+  }
+}));
+
 import {
   buildRunDefinition,
   getRoundBucketLabel,

@@ -15,7 +15,7 @@ export function VsBanner({ state }: VsBannerProps) {
           ${state === "revealed" ? "opacity-60" : "opacity-100"}
         `}
       >
-        <span className="font-display text-3xl font-bold text-neon-cyan neon-glow-cyan">
+        <span className="font-display text-3xl font-bold text-accent glow-accent-text">
           VS
         </span>
       </div>

@@ -25,7 +25,7 @@ type GameCardProps = {
 
 const borderColors: Record<GameCardState, string> = {
   idle: "border-white/10",
-  selected: "border-neon-cyan",
+  selected: "border-accent",
   correct: "border-correct",
   incorrect: "border-wrong",
   "opponent-correct": "border-white/10",
@@ -34,7 +34,7 @@ const borderColors: Record<GameCardState, string> = {
 
 const glowStyles: Record<GameCardState, string> = {
   idle: "",
-  selected: "neon-glow-cyan-box",
+  selected: "glow-accent-box",
   correct: "neon-glow-green",
   incorrect: "neon-glow-red",
   "opponent-correct": "",
@@ -43,7 +43,7 @@ const glowStyles: Record<GameCardState, string> = {
 
 // Spring-animated score display
 function ScoreDisplay({ score }: { score: number }) {
-  const springValue = useSpring(0, { stiffness: 60, damping: 18 });
+  const springValue = useSpring(0, { stiffness: 200, damping: 12 });
   const display = useTransform(springValue, (v) => Math.round(v));
 
   useEffect(() => {
@@ -51,7 +51,7 @@ function ScoreDisplay({ score }: { score: number }) {
   }, [score, springValue]);
 
   return (
-    <motion.span className="font-display text-4xl font-bold text-neon-cyan md:text-5xl">
+    <motion.span className="font-display text-4xl font-bold text-accent md:text-5xl">
       {display}
     </motion.span>
   );

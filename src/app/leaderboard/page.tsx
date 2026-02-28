@@ -18,19 +18,19 @@ export default async function LeaderboardPage() {
     <main className="mx-auto min-h-screen max-w-4xl px-4 py-12">
       {/* Header */}
       <div className="mb-8 flex items-center justify-between">
-        <h1 className="font-display text-5xl font-bold text-neon-cyan neon-glow-cyan">
+        <h1 className="font-display text-5xl font-bold text-accent glow-accent-text">
           LEADERBOARD
         </h1>
         <div className="flex gap-3">
           <Link
             href="/game"
-            className="rounded-full bg-gradient-to-r from-neon-cyan to-neon-purple px-6 py-2 font-display text-lg font-bold text-bg-deep transition-transform hover:scale-105 active:scale-95"
+            className="rounded-full border border-accent/60 bg-accent/10 px-6 py-2 font-display text-lg font-bold text-accent transition-all hover:bg-accent/20 hover:border-accent"
           >
             PLAY
           </Link>
           <Link
             href="/"
-            className="rounded-full border border-white/10 px-6 py-2 text-sm text-text-secondary transition-colors hover:text-neon-cyan"
+            className="rounded-full border border-white/10 px-6 py-2 text-sm text-text-secondary transition-colors hover:text-accent"
           >
             Home
           </Link>
@@ -83,7 +83,7 @@ export default async function LeaderboardPage() {
               </div>
 
               {/* Score */}
-              <span className="font-display text-2xl font-bold text-neon-cyan">
+              <span className="font-display text-2xl font-bold text-accent">
                 {Math.round(item.currentScore)}
               </span>
             </div>

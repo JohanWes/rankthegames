@@ -17,8 +17,8 @@ export function StreakCounter({
       : streak < 5
         ? "text-text-primary"
         : streak < 10
-          ? "text-neon-cyan neon-glow-cyan"
-          : "bg-gradient-to-r from-neon-cyan to-neon-purple bg-clip-text text-transparent font-bold";
+          ? "text-accent glow-accent-text"
+          : "text-accent font-bold";
 
   return (
     <div className="flex items-center gap-2">

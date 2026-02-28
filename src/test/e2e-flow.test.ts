@@ -67,8 +67,8 @@ describe("End-to-end gameplay flow", () => {
 
     // --- Round 1: correct pick (g1 has score 600 >= g2 score 500) ---
     act(() => result.current.selectGame("g1"));
-    await act(async () => await vi.advanceTimersByTimeAsync(800));
-    await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(900));
+    await act(async () => await vi.advanceTimersByTimeAsync(1100));
     await act(async () => await vi.advanceTimersByTimeAsync(500));
     expect(result.current.phase).toBe("AWAITING_CHOICE");
     expect(result.current.streak).toBe(1);
@@ -78,8 +78,8 @@ describe("End-to-end gameplay flow", () => {
 
     // --- Round 2: correct pick (g1 score 600 >= g3 score 490) ---
     act(() => result.current.selectGame("g1"));
-    await act(async () => await vi.advanceTimersByTimeAsync(800));
-    await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(900));
+    await act(async () => await vi.advanceTimersByTimeAsync(1100));
     await act(async () => await vi.advanceTimersByTimeAsync(500));
     expect(result.current.streak).toBe(2);
     expect(result.current.currentRound).toBe(3);
@@ -87,8 +87,8 @@ describe("End-to-end gameplay flow", () => {
 
     // --- Round 3: correct pick (g1 score 600 >= g4 score 460) ---
     act(() => result.current.selectGame("g1"));
-    await act(async () => await vi.advanceTimersByTimeAsync(800));
-    await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(900));
+    await act(async () => await vi.advanceTimersByTimeAsync(1100));
     await act(async () => await vi.advanceTimersByTimeAsync(500));
     expect(result.current.streak).toBe(3);
     expect(result.current.currentRound).toBe(4);
@@ -96,10 +96,10 @@ describe("End-to-end gameplay flow", () => {
 
     // --- Round 4: wrong pick (g5 score 450 < g1 score 600) ---
     act(() => result.current.selectGame("g5"));
-    await act(async () => await vi.advanceTimersByTimeAsync(800));
+    await act(async () => await vi.advanceTimersByTimeAsync(900));
     expect(result.current.phase).toBe("INCORRECT");
 
-    await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(1100));
     expect(result.current.phase).toBe("GAME_OVER");
     expect(result.current.streak).toBe(3);
 

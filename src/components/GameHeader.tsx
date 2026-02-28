@@ -22,7 +22,7 @@ export function GameHeader({
         {/* Wordmark */}
         <Link
           href="/"
-          className="font-display text-xl font-bold text-neon-cyan neon-glow-cyan md:text-2xl"
+          className="font-display text-xl font-bold text-accent glow-accent-text md:text-2xl"
         >
           RankTheGames
         </Link>

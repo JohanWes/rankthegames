@@ -24,20 +24,20 @@ describe("StreakCounter", () => {
     expect(streakEl?.className).toContain("text-text-primary");
   });
 
-  it("applies cyan styling for streak 5-9", () => {
+  it("applies accent styling for streak 5-9", () => {
     const { container } = render(
       <StreakCounter streak={7} previousStreak={10} isNewHighScore={false} />
     );
     const streakEl = container.querySelector("span");
-    expect(streakEl?.className).toContain("text-neon-cyan");
+    expect(streakEl?.className).toContain("text-accent");
   });
 
-  it("applies gradient styling for streak 10+", () => {
+  it("applies bold styling for streak 10+", () => {
     const { container } = render(
       <StreakCounter streak={10} previousStreak={10} isNewHighScore={false} />
     );
     const streakEl = container.querySelector("span");
-    expect(streakEl?.className).toContain("bg-gradient-to-r");
+    expect(streakEl?.className).toContain("text-accent");
   });
 
   it("shows NEW BEST badge when isNewHighScore and streak > previousStreak", () => {

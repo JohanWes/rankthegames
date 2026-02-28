@@ -114,13 +114,13 @@ export default function GamePage() {
             <button
               type="button"
               onClick={handlePlayAgain}
-              className="mt-4 rounded-full bg-neon-cyan/20 px-6 py-2 text-neon-cyan"
+              className="mt-4 rounded-full bg-accent/20 px-6 py-2 text-accent"
             >
               Retry
             </button>
           </div>
         ) : (
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-neon-cyan/30 border-t-neon-cyan" />
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-accent/30 border-t-accent" />
         )}
       </div>
     );
