@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useGame } from "./useGame";
 import { createMockRunResponse } from "@/test/helpers/mock-data";
+import { resetRunPrefetchForTests, warmRunPrefetch } from "@/lib/run-prefetch";
 
 const mockRun = createMockRunResponse();
 
@@ -23,11 +24,13 @@ function mockFetchFailure(status = 500) {
 beforeEach(() => {
   vi.useFakeTimers();
   localStorage.clear();
+  resetRunPrefetchForTests();
 });
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  resetRunPrefetchForTests();
 });
 
 describe("useGame", () => {
@@ -51,6 +54,22 @@ describe("useGame", () => {
     expect(result.current.rightGame?.id).toBe("g2");
     expect(result.current.currentRound).toBe(1);
     expect(result.current.streak).toBe(0);
+  });
+
+  it("consumes a warmed run instead of issuing a second bootstrap fetch", async () => {
+    mockFetchSuccess();
+
+    await warmRunPrefetch();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    const { result } = renderHook(() => useGame());
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(result.current.phase).toBe("AWAITING_CHOICE");
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it("correct pick flows through REVEALING → CORRECT → AWAITING_CHOICE with new pair", async () => {

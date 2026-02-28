@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useGame } from "@/hooks/useGame";
 import { createMockRunResponse } from "@/test/helpers/mock-data";
+import { resetRunPrefetchForTests } from "@/lib/run-prefetch";
 
 const mockRun = createMockRunResponse();
 
@@ -40,12 +41,14 @@ function setupFetch() {
 beforeEach(() => {
   vi.useFakeTimers();
   localStorage.clear();
+  resetRunPrefetchForTests();
   setupFetch();
 });
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  resetRunPrefetchForTests();
 });
 
 describe("End-to-end gameplay flow", () => {

@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { LandingRunPrefetch } from "@/components/LandingRunPrefetch";
 
 export default function LandingPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-6">
+      <LandingRunPrefetch />
       <div className="text-center">
         {/* Title */}
         <h1 className="font-display text-7xl font-bold leading-none tracking-tight sm:text-8xl lg:text-9xl">

@@ -8,6 +8,7 @@ import type {
   RunSelection,
   CreateRunResponse
 } from "@/lib/types";
+import { consumeWarmRun } from "@/lib/run-prefetch";
 
 const MAX_ROUNDS = 10;
 const REVEAL_DELAY_MS = 800;
@@ -224,12 +225,7 @@ export function useGame(): UseGameReturn {
   const fetchRun = useCallback(async () => {
     dispatch({ type: "FETCH_START" });
     try {
-      const res = await fetch("/api/runs", { method: "POST" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.message ?? `Server error (${res.status})`);
-      }
-      const data: CreateRunResponse = await res.json();
+      const data: CreateRunResponse = await consumeWarmRun();
       const stored = typeof window !== "undefined" ? localStorage.getItem(HIGH_SCORE_KEY) : null;
       const highScore = stored ? parseInt(stored, 10) || 0 : 0;
       dispatch({ type: "FETCH_SUCCESS", payload: data, highScore });
