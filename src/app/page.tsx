@@ -9,7 +9,7 @@ export default function LandingPage() {
         {/* Title */}
         <h1 className="font-display text-7xl font-bold leading-none tracking-tight sm:text-8xl lg:text-9xl">
           <span className="bg-gradient-to-r from-neon-cyan to-neon-purple bg-clip-text text-transparent neon-glow-cyan">
-            THIS OR THAT
+            RANK THE GAMES
           </span>
         </h1>
 

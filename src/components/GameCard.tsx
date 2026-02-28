@@ -168,7 +168,7 @@ export function GameCard({
           alt={game.name}
           fill
           className="object-cover"
-          sizes="(max-width: 768px) 50vw, 33vw"
+          sizes="(max-width: 768px) 50vw, 40vw"
           priority={position === "left"}
         />
       ) : (

@@ -15,7 +15,7 @@ const teko = Teko({
 });
 
 export const metadata: Metadata = {
-  title: "ThisOrThat — Which Game Is More Popular?",
+  title: "RankTheGames — Which Game Is More Popular?",
   description:
     "A higher-lower arcade game where you guess which video game is more popular. How long can you keep your streak alive?"
 };

@@ -94,9 +94,15 @@ describe("useGame", () => {
     expect(result.current.phase).toBe("CORRECT");
     expect(result.current.streak).toBe(1);
 
-    // Advance transition timer (400ms)
+    // Advance transition timer (400ms) → TRANSITIONING
     await act(async () => {
       await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(result.current.phase).toBe("TRANSITIONING");
+
+    // Advance swap timer (500ms) → AWAITING_CHOICE
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
     });
     expect(result.current.phase).toBe("AWAITING_CHOICE");
     expect(result.current.currentRound).toBe(2);
@@ -145,6 +151,7 @@ describe("useGame", () => {
     await act(async () => await vi.advanceTimersByTimeAsync(800));
     expect(result.current.streak).toBe(1);
     await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(500));
 
     // Round 2: g1 (600) vs g3 (490). Pick g1 (correct)
     expect(result.current.leftGame?.id).toBe("g1");
@@ -152,6 +159,7 @@ describe("useGame", () => {
     await act(async () => await vi.advanceTimersByTimeAsync(800));
     expect(result.current.streak).toBe(2);
     await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(500));
 
     expect(result.current.currentRound).toBe(3);
   });
@@ -170,11 +178,11 @@ describe("useGame", () => {
     await act(async () => await vi.advanceTimersByTimeAsync(400));
 
     expect(result.current.highScore).toBe(1);
-    expect(localStorage.getItem("thisorthat_highscore")).toBe("1");
+    expect(localStorage.getItem("rankthegames_highscore")).toBe("1");
   });
 
   it("loads high score from localStorage on new run", async () => {
-    localStorage.setItem("thisorthat_highscore", "5");
+    localStorage.setItem("rankthegames_highscore", "5");
     mockFetchSuccess();
     const { result } = renderHook(() => useGame());
 
@@ -238,6 +246,7 @@ describe("useGame", () => {
     act(() => result.current.selectGame("g1"));
     await act(async () => await vi.advanceTimersByTimeAsync(800));
     await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(500));
     expect(result.current.leftGame?.id).toBe("g1");
     expect(result.current.rightGame?.id).toBe("g3");
 
@@ -245,6 +254,7 @@ describe("useGame", () => {
     act(() => result.current.selectGame("g1"));
     await act(async () => await vi.advanceTimersByTimeAsync(800));
     await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(500));
     expect(result.current.leftGame?.id).toBe("g1");
     expect(result.current.rightGame?.id).toBe("g4");
 

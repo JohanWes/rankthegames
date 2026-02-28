@@ -2,7 +2,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { z } from "zod";
 import { env } from "../lib/env.ts";
 
-const RUN_TOKEN_ISSUER = "thisorthatgame";
+const RUN_TOKEN_ISSUER = "rankthegames";
 const RUN_TOKEN_AUDIENCE = "game-client";
 const RUN_TOKEN_LIFETIME_SECONDS = 15 * 60;
 
@@ -18,7 +18,7 @@ export type RunChallenger = {
 };
 
 export type RunTokenPayload = {
-  iss: "thisorthatgame";
+  iss: "rankthegames";
   aud: "game-client";
   runId: string;
   snapshotVersion: string;

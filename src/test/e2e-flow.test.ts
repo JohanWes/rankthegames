@@ -69,6 +69,7 @@ describe("End-to-end gameplay flow", () => {
     act(() => result.current.selectGame("g1"));
     await act(async () => await vi.advanceTimersByTimeAsync(800));
     await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(500));
     expect(result.current.phase).toBe("AWAITING_CHOICE");
     expect(result.current.streak).toBe(1);
     expect(result.current.currentRound).toBe(2);
@@ -79,6 +80,7 @@ describe("End-to-end gameplay flow", () => {
     act(() => result.current.selectGame("g1"));
     await act(async () => await vi.advanceTimersByTimeAsync(800));
     await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(500));
     expect(result.current.streak).toBe(2);
     expect(result.current.currentRound).toBe(3);
     expect(result.current.rightGame?.id).toBe("g4");
@@ -87,6 +89,7 @@ describe("End-to-end gameplay flow", () => {
     act(() => result.current.selectGame("g1"));
     await act(async () => await vi.advanceTimersByTimeAsync(800));
     await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(500));
     expect(result.current.streak).toBe(3);
     expect(result.current.currentRound).toBe(4);
     expect(result.current.rightGame?.id).toBe("g5");

@@ -147,7 +147,7 @@ export default function GamePage() {
       {/* Game area */}
       <div className="relative flex min-h-screen flex-col items-center justify-center gap-4 px-4 pt-14 pb-8 md:flex-row md:gap-6 md:pt-16">
         {game.leftGame && (
-          <div className="w-full max-w-xs md:max-w-sm">
+          <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
             <GameCard
               game={game.leftGame}
               position="left"
@@ -162,7 +162,7 @@ export default function GamePage() {
         <VsBanner state={getVsState(game.phase)} />
 
         {game.rightGame && (
-          <div className="w-full max-w-xs md:max-w-sm">
+          <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
             <GameCard
               game={game.rightGame}
               position="right"

@@ -14,7 +14,7 @@ const MAX_ROUNDS = 10;
 const REVEAL_DELAY_MS = 800;
 const TRANSITION_DELAY_MS = 400;
 const SWAP_DELAY_MS = 500;
-const HIGH_SCORE_KEY = "thisorthat_highscore";
+const HIGH_SCORE_KEY = "rankthegames_highscore";
 
 // ---------------------------------------------------------------------------
 // State

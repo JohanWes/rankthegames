@@ -24,7 +24,7 @@ export function GameHeader({
           href="/"
           className="font-display text-xl font-bold text-neon-cyan neon-glow-cyan md:text-2xl"
         >
-          ThisOrThat
+          RankTheGames
         </Link>
 
         {/* Streak */}
