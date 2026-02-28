@@ -16,6 +16,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@vercel/analytics": "^1.6.1",
     "canvas-confetti": "^1.9.4",
     "framer-motion": "^12.34.3",
     "jose": "^6.1.3",
