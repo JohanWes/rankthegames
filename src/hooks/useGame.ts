@@ -13,6 +13,7 @@ import { consumeWarmRun } from "@/lib/run-prefetch";
 const MAX_ROUNDS = 10;
 const REVEAL_DELAY_MS = 800;
 const TRANSITION_DELAY_MS = 400;
+const SWAP_DELAY_MS = 500;
 const HIGH_SCORE_KEY = "thisorthat_highscore";
 
 // ---------------------------------------------------------------------------
@@ -44,6 +45,7 @@ type Action =
   | { type: "SELECT_GAME"; gameId: string }
   | { type: "REVEAL_DONE"; wasCorrect: boolean }
   | { type: "TRANSITION_DONE" }
+  | { type: "SWAP_DONE" }
   | { type: "PLAY_AGAIN" };
 
 function getInitialState(): State {
@@ -153,24 +155,9 @@ function reducer(state: State, action: Action): State {
 
     case "TRANSITION_DONE": {
       if (state.phase === "CORRECT") {
-        // Winner-stays: picked game becomes left, next challenger becomes right
-        const lastSelection = state.selections[state.selections.length - 1];
-        if (!lastSelection) return state;
-
-        const pickedGame = state.games[lastSelection.pickedGameId] ?? null;
-        const nextChallenger = state.challengerQueue.find(
-          (c) => c.round === state.currentRound + 1
-        );
-        const nextRightGame = nextChallenger
-          ? state.games[nextChallenger.gameId] ?? null
-          : null;
-
         return {
           ...state,
-          phase: "AWAITING_CHOICE",
-          leftGame: pickedGame,
-          rightGame: nextRightGame,
-          currentRound: state.currentRound + 1
+          phase: "TRANSITIONING"
         };
       }
 
@@ -182,6 +169,30 @@ function reducer(state: State, action: Action): State {
       }
 
       return state;
+    }
+
+    case "SWAP_DONE": {
+      if (state.phase !== "TRANSITIONING") return state;
+
+      // Winner-stays: picked game becomes left, next challenger becomes right
+      const lastSelection = state.selections[state.selections.length - 1];
+      if (!lastSelection) return state;
+
+      const pickedGame = state.games[lastSelection.pickedGameId] ?? null;
+      const nextChallenger = state.challengerQueue.find(
+        (c) => c.round === state.currentRound + 1
+      );
+      const nextRightGame = nextChallenger
+        ? state.games[nextChallenger.gameId] ?? null
+        : null;
+
+      return {
+        ...state,
+        phase: "AWAITING_CHOICE",
+        leftGame: pickedGame,
+        rightGame: nextRightGame,
+        currentRound: state.currentRound + 1
+      };
     }
 
     case "PLAY_AGAIN":
@@ -276,8 +287,7 @@ export function useGame(): UseGameReturn {
     }
   }, [state.phase, state.selections, isCorrectPick]);
 
-  // Handle CORRECT → TRANSITIONING → AWAITING_CHOICE
-  // Handle INCORRECT → GAME_OVER
+  // Handle CORRECT → TRANSITIONING, INCORRECT → GAME_OVER
   useEffect(() => {
     if (state.phase === "CORRECT" || state.phase === "INCORRECT") {
       transitionTimerRef.current = setTimeout(() => {
@@ -286,6 +296,20 @@ export function useGame(): UseGameReturn {
 
       return () => {
         if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+      };
+    }
+  }, [state.phase]);
+
+  // Handle TRANSITIONING → AWAITING_CHOICE (card swap animation window)
+  const swapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (state.phase === "TRANSITIONING") {
+      swapTimerRef.current = setTimeout(() => {
+        dispatch({ type: "SWAP_DONE" });
+      }, SWAP_DELAY_MS);
+
+      return () => {
+        if (swapTimerRef.current) clearTimeout(swapTimerRef.current);
       };
     }
   }, [state.phase]);
