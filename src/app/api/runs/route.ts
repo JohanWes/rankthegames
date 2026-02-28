@@ -13,12 +13,15 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const headers = createNoStoreHeaders();
+  let stage = "rate_limit";
 
   try {
     const rateLimit = await enforceRequestRateLimit(request, "/api/runs");
     applyRateLimitHeaders(headers, rateLimit);
 
+    stage = "build_run";
     const runDefinition = await createRunDefinition();
+    stage = "issue_token";
     const token = await issueRunToken({
       runId: runDefinition.runId,
       snapshotVersion: runDefinition.snapshotVersion,
@@ -58,7 +61,11 @@ export async function POST(request: Request) {
       );
     }
 
-    console.error("Failed to create run.", error);
+    console.error("Failed to create run.", {
+      stage,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
 
     return createErrorResponse(
       500,

@@ -127,37 +127,61 @@ export async function getLadderSnapshot(now = Date.now()): Promise<LadderSnapsho
 async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshot> {
   const games = await getGamesCollection();
   const builtAt = new Date(nowMs);
-  const sourceGames = await games
-    .find<{
-      _id: { toString(): string };
-      name: string;
-      year?: number | null;
-      seedRank: number;
-      currentScore: number;
-      totalAppearances: number;
-      cover?: {
-        imageUrl?: string | null;
-        thumbUrl?: string | null;
-      };
-    }>(
-      {},
-      {
-        projection: {
-          _id: 1,
-          name: 1,
-          year: 1,
-          seedRank: 1,
-          currentScore: 1,
-          totalAppearances: 1,
-          "cover.imageUrl": 1,
-          "cover.thumbUrl": 1
+  let sourceGames: Array<{
+    _id: { toString(): string };
+    name: string;
+    year?: number | null;
+    seedRank: number;
+    currentScore: number;
+    totalAppearances: number;
+    cover?: {
+      imageUrl?: string | null;
+      thumbUrl?: string | null;
+    };
+  }>;
+
+  try {
+    sourceGames = await games
+      .find<{
+        _id: { toString(): string };
+        name: string;
+        year?: number | null;
+        seedRank: number;
+        currentScore: number;
+        totalAppearances: number;
+        cover?: {
+          imageUrl?: string | null;
+          thumbUrl?: string | null;
+        };
+      }>(
+        {},
+        {
+          projection: {
+            _id: 1,
+            name: 1,
+            year: 1,
+            seedRank: 1,
+            currentScore: 1,
+            totalAppearances: 1,
+            "cover.imageUrl": 1,
+            "cover.thumbUrl": 1
+          }
         }
-      }
-    )
-    .sort({ currentScore: -1, _id: 1 })
-    .toArray();
+      )
+      .sort({ currentScore: -1, _id: 1 })
+      .toArray();
+  } catch (error) {
+    console.error("Failed to load games for ladder snapshot.", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    throw error;
+  }
 
   if (sourceGames.length < 2) {
+    console.error("Insufficient games available to create a run.", {
+      gameCount: sourceGames.length
+    });
     throw new Error("At least two games are required to create a run.");
   }
 
