@@ -85,4 +85,5 @@ export type GameState =
   | "CORRECT"
   | "INCORRECT"
   | "TRANSITIONING"
+  | "RESETTING"
   | "GAME_OVER";

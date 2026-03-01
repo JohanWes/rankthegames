@@ -41,12 +41,14 @@ type State = {
 type Action =
   | { type: "FETCH_START" }
   | { type: "FETCH_SUCCESS"; payload: CreateRunResponse; highScore: number }
+  | { type: "FETCH_SUCCESS_CONTINUE"; payload: CreateRunResponse; streak: number; highScore: number; previousStreak: number; isNewHighScore: boolean }
   | { type: "FETCH_ERROR"; error: string }
   | { type: "SELECT_GAME"; gameId: string }
   | { type: "REVEAL_DONE"; wasCorrect: boolean }
   | { type: "TRANSITION_DONE" }
   | { type: "SWAP_DONE" }
-  | { type: "PLAY_AGAIN" };
+  | { type: "PLAY_AGAIN" }
+  | { type: "RESET_CONTINUE" };
 
 function getInitialState(): State {
   return {
@@ -98,6 +100,31 @@ function reducer(state: State, action: Action): State {
       };
     }
 
+    case "FETCH_SUCCESS_CONTINUE": {
+      const { payload } = action;
+      const leftGame = payload.games[payload.initialPair.leftGameId] ?? null;
+      const rightGame = payload.games[payload.initialPair.rightGameId] ?? null;
+
+      return {
+        ...getInitialState(),
+        phase: "AWAITING_CHOICE",
+        runId: payload.runId,
+        signedRunToken: payload.signedRunToken,
+        games: payload.games,
+        challengerQueue: payload.challengerQueue,
+        leftGame,
+        rightGame,
+        currentRound: 1,
+        streak: action.streak,
+        previousStreak: action.previousStreak,
+        highScore: action.highScore,
+        isNewHighScore: action.isNewHighScore,
+        selections: [],
+        startedAt: Date.now(),
+        error: null
+      };
+    }
+
     case "FETCH_ERROR":
       return { ...state, phase: "LOADING", error: action.error };
 
@@ -127,11 +154,11 @@ function reducer(state: State, action: Action): State {
         const newHighScore = Math.max(state.highScore, newStreak);
         const isNewHighScore = newStreak > state.previousStreak;
 
-        // If we just completed the max round correctly, go to game over
+        // If we just completed the max round correctly, trigger a reset
         if (state.currentRound >= MAX_ROUNDS) {
           return {
             ...state,
-            phase: "GAME_OVER",
+            phase: "RESETTING",
             streak: newStreak,
             highScore: newHighScore,
             isNewHighScore
@@ -195,6 +222,16 @@ function reducer(state: State, action: Action): State {
       };
     }
 
+    case "RESET_CONTINUE":
+      return {
+        ...getInitialState(),
+        phase: "LOADING",
+        streak: state.streak,
+        previousStreak: state.previousStreak,
+        highScore: state.highScore,
+        isNewHighScore: state.isNewHighScore
+      };
+
     case "PLAY_AGAIN":
       return { ...getInitialState(), phase: "LOADING" };
 
@@ -225,6 +262,7 @@ export type UseGameReturn = {
   games: Record<string, RunGame>;
   selectGame: (gameId: string) => void;
   playAgain: () => void;
+  continueAfterReset: () => void;
 };
 
 export function useGame(): UseGameReturn {
@@ -329,6 +367,31 @@ export function useGame(): UseGameReturn {
     [state.phase]
   );
 
+  const continueAfterReset = useCallback(async () => {
+    const carryStreak = state.streak;
+    const carryHighScore = state.highScore;
+    const carryPreviousStreak = state.previousStreak;
+    const carryIsNewHighScore = state.isNewHighScore;
+
+    dispatch({ type: "RESET_CONTINUE" });
+    try {
+      const data: CreateRunResponse = await consumeWarmRun();
+      dispatch({
+        type: "FETCH_SUCCESS_CONTINUE",
+        payload: data,
+        streak: carryStreak,
+        highScore: carryHighScore,
+        previousStreak: carryPreviousStreak,
+        isNewHighScore: carryIsNewHighScore
+      });
+    } catch (err) {
+      dispatch({
+        type: "FETCH_ERROR",
+        error: err instanceof Error ? err.message : "Failed to start game"
+      });
+    }
+  }, [state.streak, state.highScore, state.previousStreak, state.isNewHighScore]);
+
   const playAgain = useCallback(() => {
     fetchRef.current = false;
     dispatch({ type: "PLAY_AGAIN" });
@@ -353,6 +416,7 @@ export function useGame(): UseGameReturn {
     challengerQueue: state.challengerQueue,
     games: state.games,
     selectGame,
-    playAgain
+    playAgain,
+    continueAfterReset
   };
 }

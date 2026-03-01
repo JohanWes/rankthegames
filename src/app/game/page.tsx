@@ -8,10 +8,9 @@ import { GameCard, type GameCardState } from "@/components/GameCard";
 import { VsBanner } from "@/components/VsBanner";
 import { GameHeader } from "@/components/GameHeader";
 import { GameOverModal } from "@/components/GameOverModal";
+import { ResetPopup } from "@/components/ResetPopup";
 import { ScreenFlash } from "@/components/ScreenFlash";
 import type { RunGame, GameState } from "@/lib/types";
-
-const MAX_ROUNDS = 10;
 
 function getCardState(
   phase: GameState,
@@ -78,23 +77,25 @@ export default function GamePage() {
     }
   }, [game.runId, game.signedRunToken, game.selections, game.startedAt, setRunParams]);
 
-  // Submit on game over
+  // Submit on game over or reset (completed run)
   useEffect(() => {
-    if (game.phase === "GAME_OVER" && game.runId && submittedForRunRef.current !== game.runId) {
+    const shouldSubmit = game.phase === "GAME_OVER" || game.phase === "RESETTING";
+    if (shouldSubmit && game.runId && submittedForRunRef.current !== game.runId) {
       submittedForRunRef.current = game.runId;
 
-      // streak matches selections length → all correct
-      const allCorrect = game.streak === game.selections.length;
-      let endedReason: "wrong_guess" | "max_rounds" | "abandoned";
-      if (!allCorrect) {
-        endedReason = "wrong_guess";
-      } else if (game.streak >= MAX_ROUNDS) {
-        endedReason = "max_rounds";
+      if (game.phase === "RESETTING") {
+        submitRun("max_rounds");
       } else {
-        endedReason = "abandoned";
+        // streak matches selections length → all correct
+        const allCorrect = game.streak === game.selections.length;
+        let endedReason: "wrong_guess" | "max_rounds" | "abandoned";
+        if (!allCorrect) {
+          endedReason = "wrong_guess";
+        } else {
+          endedReason = "abandoned";
+        }
+        submitRun(endedReason);
       }
-
-      submitRun(endedReason);
     }
   }, [game.phase, game.runId, game.streak, game.selections.length, submitRun]);
 
@@ -102,6 +103,11 @@ export default function GamePage() {
     submittedForRunRef.current = null;
     resetSubmission();
     game.playAgain();
+  };
+
+  const handleResetContinue = () => {
+    resetSubmission();
+    game.continueAfterReset();
   };
 
   // Loading state
@@ -178,6 +184,12 @@ export default function GamePage() {
       </div>
 
       <ScreenFlash type={getFlashType(game.phase)} />
+
+      <ResetPopup
+        visible={game.phase === "RESETTING"}
+        streak={game.streak}
+        onComplete={handleResetContinue}
+      />
 
       {game.phase === "GAME_OVER" && (
         <GameOverModal

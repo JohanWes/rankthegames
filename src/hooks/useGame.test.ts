@@ -234,6 +234,69 @@ describe("useGame", () => {
     expect(result.current.error).toBe("Server error");
   });
 
+  it("goes to RESETTING after completing all 10 rounds correctly", async () => {
+    mockFetchSuccess();
+    const { result } = renderHook(() => useGame());
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    // Play 10 correct rounds (always pick g1, which has the highest score)
+    for (let round = 1; round <= 10; round++) {
+      act(() => result.current.selectGame("g1"));
+      await act(async () => await vi.advanceTimersByTimeAsync(900)); // REVEAL_DONE
+
+      if (round < 10) {
+        await act(async () => await vi.advanceTimersByTimeAsync(1100)); // TRANSITION_DONE
+        await act(async () => await vi.advanceTimersByTimeAsync(500)); // SWAP_DONE
+      }
+    }
+
+    expect(result.current.phase).toBe("RESETTING");
+    expect(result.current.streak).toBe(10);
+  });
+
+  it("continueAfterReset preserves streak and loads new run", async () => {
+    mockFetchSuccess();
+    const { result } = renderHook(() => useGame());
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    // Play through all 10 rounds
+    for (let round = 1; round <= 10; round++) {
+      act(() => result.current.selectGame("g1"));
+      await act(async () => await vi.advanceTimersByTimeAsync(900));
+
+      if (round < 10) {
+        await act(async () => await vi.advanceTimersByTimeAsync(1100));
+        await act(async () => await vi.advanceTimersByTimeAsync(500));
+      }
+    }
+
+    expect(result.current.phase).toBe("RESETTING");
+    expect(result.current.streak).toBe(10);
+
+    // Continue after reset with a new run
+    const newRun = createMockRunResponse({ runId: "test-run-002" });
+    mockFetchSuccess(newRun);
+
+    await act(async () => {
+      result.current.continueAfterReset();
+    });
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(result.current.phase).toBe("AWAITING_CHOICE");
+    expect(result.current.streak).toBe(10); // Streak preserved
+    expect(result.current.currentRound).toBe(1); // Round reset
+    expect(result.current.runId).toBe("test-run-002");
+  });
+
   it("winner-stays: picked game becomes leftGame, next challenger becomes rightGame", async () => {
     mockFetchSuccess();
     const { result } = renderHook(() => useGame());
