@@ -77,6 +77,17 @@ export function MobileCarousel({
 
   return (
     <>
+      {/* VS badge + dot indicators - above cards, mobile only */}
+      <div className="mb-3 flex items-center justify-center gap-3 md:hidden">
+        <DotIndicator active={activeIndex === 0} />
+        <div className="flex h-8 w-8 items-center justify-center rounded-full glass">
+          <span className="font-display text-sm font-bold text-accent glow-accent-text">
+            VS
+          </span>
+        </div>
+        <DotIndicator active={activeIndex === 1} />
+      </div>
+
       {/* Mobile carousel - hidden at md+ */}
       <div
         ref={containerRef}
@@ -93,24 +104,13 @@ export function MobileCarousel({
             ref={(el) => {
               slotRefs.current[i] = el;
             }}
-            className="w-[85vw] flex-shrink-0 snap-center px-2 first:pl-[7.5vw] last:pr-[7.5vw]"
+            className="w-[86vw] flex-shrink-0 snap-start pl-3 pr-1 last:pr-3"
           >
-            <div className="mx-auto max-h-[70svh]">
+            <div className="max-h-[70svh]">
               {child}
             </div>
           </div>
         ))}
-      </div>
-
-      {/* Dot indicators + VS badge - mobile only */}
-      <div className="mt-3 flex items-center justify-center gap-3 md:hidden">
-        <DotIndicator active={activeIndex === 0} />
-        <div className="flex h-8 w-8 items-center justify-center rounded-full glass">
-          <span className="font-display text-sm font-bold text-accent glow-accent-text">
-            VS
-          </span>
-        </div>
-        <DotIndicator active={activeIndex === 1} />
       </div>
 
       {/* Desktop pass-through - hidden below md */}
