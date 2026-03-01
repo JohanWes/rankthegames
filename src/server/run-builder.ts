@@ -603,6 +603,7 @@ function getPercentileFromBottom(index: number, totalGames: number) {
   return Number((((totalGames - index) / totalGames) * 100).toFixed(3));
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getPreferredOutlierGap(_anchorScore: number) {
   return 300;
 }

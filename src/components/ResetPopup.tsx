@@ -52,7 +52,6 @@ export function ResetPopup({ visible, streak, onComplete }: ResetPopupProps) {
               type: "spring",
               stiffness: 300,
               damping: 20,
-              exit: { duration: 0.3, ease: "easeOut" },
             }}
           >
             <h2
