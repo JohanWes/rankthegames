@@ -4,12 +4,6 @@ import { getGamesCollection } from "./collections.ts";
 const LADDER_SNAPSHOT_TTL_MS = 30_000;
 export const MAX_RUN_ROUNDS = 10;
 const SELECTION_POOL_SIZE = 20;
-const STARTING_PAIR_MIN_SCORE_GAP = 40;
-const STARTING_PAIR_MAX_SCORE_GAP = 100;
-const STARTING_PAIR_PREFERRED_GAP = 65;
-const CORE_SCORE_RADIUS = 60;
-const CORE_RADIUS_EXPANSION_STEP = 20;
-const MAX_CORE_SCORE_RADIUS = 110;
 const OUTLIER_MIN_SCORE_GAP = 125;
 const OUTLIER_MAX_SCORE_GAP = 225;
 const MAX_OUTLIERS_PER_RUN = 2;
@@ -18,6 +12,83 @@ const ANCHOR_MAX_PERCENTILE = 85;
 const OPENING_BUCKET_LABEL = "cluster:opening";
 
 export const RUN_BAND_MODEL = "score_cluster.v1";
+
+export type ScoreBasedParams = {
+  coreScoreRadius: number;
+  maxCoreScoreRadius: number;
+  radiusExpansionStep: number;
+  startingPairMinGap: number;
+  startingPairMaxGap: number;
+  startingPairPreferredGap: number;
+};
+
+const TIER_BREAKPOINTS: Array<{ score: number; params: ScoreBasedParams }> = [
+  {
+    score: 400,
+    params: {
+      coreScoreRadius: 150,
+      maxCoreScoreRadius: 250,
+      radiusExpansionStep: 30,
+      startingPairMinGap: 80,
+      startingPairMaxGap: 300,
+      startingPairPreferredGap: 175
+    }
+  },
+  {
+    score: 700,
+    params: {
+      coreScoreRadius: 80,
+      maxCoreScoreRadius: 140,
+      radiusExpansionStep: 20,
+      startingPairMinGap: 60,
+      startingPairMaxGap: 150,
+      startingPairPreferredGap: 100
+    }
+  },
+  {
+    score: 900,
+    params: {
+      coreScoreRadius: 30,
+      maxCoreScoreRadius: 100,
+      radiusExpansionStep: 15,
+      startingPairMinGap: 10,
+      startingPairMaxGap: 40,
+      startingPairPreferredGap: 25
+    }
+  }
+];
+
+export function getScoreBasedParams(anchorScore: number): ScoreBasedParams {
+  const first = TIER_BREAKPOINTS[0];
+  const last = TIER_BREAKPOINTS[TIER_BREAKPOINTS.length - 1];
+
+  if (anchorScore <= first.score) return { ...first.params };
+  if (anchorScore >= last.score) return { ...last.params };
+
+  let lowerTier = first;
+  let upperTier = last;
+
+  for (let i = 0; i < TIER_BREAKPOINTS.length - 1; i++) {
+    if (anchorScore >= TIER_BREAKPOINTS[i].score && anchorScore <= TIER_BREAKPOINTS[i + 1].score) {
+      lowerTier = TIER_BREAKPOINTS[i];
+      upperTier = TIER_BREAKPOINTS[i + 1];
+      break;
+    }
+  }
+
+  const t = (anchorScore - lowerTier.score) / (upperTier.score - lowerTier.score);
+
+  const interpolate = (low: number, high: number) => Math.round(low + (high - low) * t);
+
+  return {
+    coreScoreRadius: interpolate(lowerTier.params.coreScoreRadius, upperTier.params.coreScoreRadius),
+    maxCoreScoreRadius: interpolate(lowerTier.params.maxCoreScoreRadius, upperTier.params.maxCoreScoreRadius),
+    radiusExpansionStep: interpolate(lowerTier.params.radiusExpansionStep, upperTier.params.radiusExpansionStep),
+    startingPairMinGap: interpolate(lowerTier.params.startingPairMinGap, upperTier.params.startingPairMinGap),
+    startingPairMaxGap: interpolate(lowerTier.params.startingPairMaxGap, upperTier.params.startingPairMaxGap),
+    startingPairPreferredGap: interpolate(lowerTier.params.startingPairPreferredGap, upperTier.params.startingPairPreferredGap)
+  };
+}
 
 type ScoreWindow = {
   minScore: number;
@@ -31,6 +102,7 @@ type ClusterPlan = {
   coreCandidates: LadderSnapshotGame[];
   outlierCandidates: LadderSnapshotGame[];
   desiredOutlierCount: number;
+  scoreParams: ScoreBasedParams;
 };
 
 export type LadderSnapshotGame = {
@@ -211,7 +283,7 @@ export function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition
   const usedGameIds = new Set<string>();
   const issuedGameIds: string[] = [];
   const clusterPlan = buildClusterPlan(snapshot.games);
-  const initialPair = pickStartingPair(clusterPlan.coreCandidates);
+  const initialPair = pickStartingPair(clusterPlan.coreCandidates, clusterPlan.scoreParams);
 
   usedGameIds.add(initialPair.left.id);
   usedGameIds.add(initialPair.right.id);
@@ -296,69 +368,74 @@ export function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition
 function buildClusterPlan(games: LadderSnapshotGame[]): ClusterPlan {
   const totalGamesNeeded = MAX_RUN_ROUNDS + 1;
   const anchorCandidates = getAnchorCandidates(games);
+  const viablePlans: ClusterPlan[] = [];
 
-  for (
-    let scoreRadius = CORE_SCORE_RADIUS;
-    scoreRadius <= MAX_CORE_SCORE_RADIUS;
-    scoreRadius += CORE_RADIUS_EXPANSION_STEP
-  ) {
-    const viablePlans = anchorCandidates
-      .map((anchorGame) => {
-        const coreWindow = {
-          minScore: Math.max(1, anchorGame.snapshotScore - scoreRadius),
-          maxScore: anchorGame.snapshotScore + scoreRadius
-        };
-        const coreCandidates = games.filter((game) =>
-          isScoreInWindow(game.snapshotScore, coreWindow)
-        );
-        const outlierCandidates = games.filter((game) =>
-          isOutlierCandidate(game, anchorGame.snapshotScore, coreWindow)
-        );
-        const desiredOutlierCount = determineOutlierCount(
-          coreCandidates.length,
-          outlierCandidates.length,
-          totalGamesNeeded
-        );
+  for (const anchorGame of anchorCandidates) {
+    const scoreParams = getScoreBasedParams(anchorGame.snapshotScore);
 
-        if (coreCandidates.length < totalGamesNeeded - desiredOutlierCount) {
-          return null;
-        }
+    for (
+      let scoreRadius = scoreParams.coreScoreRadius;
+      scoreRadius <= scoreParams.maxCoreScoreRadius;
+      scoreRadius += scoreParams.radiusExpansionStep
+    ) {
+      const coreWindow = {
+        minScore: Math.max(1, anchorGame.snapshotScore - scoreRadius),
+        maxScore: anchorGame.snapshotScore + scoreRadius
+      };
+      const coreCandidates = games.filter((game) =>
+        isScoreInWindow(game.snapshotScore, coreWindow)
+      );
+      const outlierCandidates = games.filter((game) =>
+        isOutlierCandidate(game, anchorGame.snapshotScore, coreWindow)
+      );
+      const desiredOutlierCount = determineOutlierCount(
+        coreCandidates.length,
+        outlierCandidates.length,
+        totalGamesNeeded
+      );
 
-        return {
-          anchorGame,
-          anchorScore: anchorGame.snapshotScore,
-          coreWindow,
-          coreCandidates,
-          outlierCandidates,
-          desiredOutlierCount
-        } satisfies ClusterPlan;
-      })
-      .filter((plan): plan is ClusterPlan => plan !== null)
-      .sort((left, right) => {
-        if (left.desiredOutlierCount !== right.desiredOutlierCount) {
-          return right.desiredOutlierCount - left.desiredOutlierCount;
-        }
+      if (coreCandidates.length < totalGamesNeeded - desiredOutlierCount) {
+        continue;
+      }
 
-        if (left.anchorGame.totalAppearances !== right.anchorGame.totalAppearances) {
-          return left.anchorGame.totalAppearances - right.anchorGame.totalAppearances;
-        }
-
-        const leftCentrality = Math.abs(left.anchorGame.percentileFromBottom - 50);
-        const rightCentrality = Math.abs(right.anchorGame.percentileFromBottom - 50);
-
-        if (leftCentrality !== rightCentrality) {
-          return leftCentrality - rightCentrality;
-        }
-
-        return left.anchorGame.id.localeCompare(right.anchorGame.id);
+      viablePlans.push({
+        anchorGame,
+        anchorScore: anchorGame.snapshotScore,
+        coreWindow,
+        coreCandidates,
+        outlierCandidates,
+        desiredOutlierCount,
+        scoreParams
       });
 
-    if (viablePlans.length > 0) {
-      return sample(viablePlans.slice(0, Math.min(SELECTION_POOL_SIZE, viablePlans.length)));
+      break;
     }
   }
 
-  throw new Error("Unable to build a clustered run pool from the current ladder snapshot.");
+  if (viablePlans.length === 0) {
+    throw new Error("Unable to build a clustered run pool from the current ladder snapshot.");
+  }
+
+  viablePlans.sort((left, right) => {
+    if (left.desiredOutlierCount !== right.desiredOutlierCount) {
+      return right.desiredOutlierCount - left.desiredOutlierCount;
+    }
+
+    if (left.anchorGame.totalAppearances !== right.anchorGame.totalAppearances) {
+      return left.anchorGame.totalAppearances - right.anchorGame.totalAppearances;
+    }
+
+    const leftCentrality = Math.abs(left.anchorGame.percentileFromBottom - 50);
+    const rightCentrality = Math.abs(right.anchorGame.percentileFromBottom - 50);
+
+    if (leftCentrality !== rightCentrality) {
+      return leftCentrality - rightCentrality;
+    }
+
+    return left.anchorGame.id.localeCompare(right.anchorGame.id);
+  });
+
+  return sample(viablePlans.slice(0, Math.min(SELECTION_POOL_SIZE, viablePlans.length)));
 }
 
 function getAnchorCandidates(games: LadderSnapshotGame[]) {
@@ -395,7 +472,7 @@ function isOutlierCandidate(game: LadderSnapshotGame, anchorScore: number, coreW
   );
 }
 
-function pickStartingPair(candidates: LadderSnapshotGame[]) {
+function pickStartingPair(candidates: LadderSnapshotGame[], scoreParams: ScoreBasedParams) {
   const prioritizedPool = prioritizeByExposure(candidates).slice(0, SELECTION_POOL_SIZE);
 
   if (prioritizedPool.length < 2) {
@@ -410,7 +487,7 @@ function pickStartingPair(candidates: LadderSnapshotGame[]) {
       const right = prioritizedPool[rightIndex];
       const gap = Math.abs(left.snapshotScore - right.snapshotScore);
 
-      if (gap >= STARTING_PAIR_MIN_SCORE_GAP && gap <= STARTING_PAIR_MAX_SCORE_GAP) {
+      if (gap >= scoreParams.startingPairMinGap && gap <= scoreParams.startingPairMaxGap) {
         compatiblePairs.push({ pair: [left, right], gap });
       }
     }
@@ -424,7 +501,7 @@ function pickStartingPair(candidates: LadderSnapshotGame[]) {
   }
 
   const weightedPairs = compatiblePairs.flatMap(({ pair, gap }) => {
-    const weight = Math.min(4, Math.floor((gap / STARTING_PAIR_PREFERRED_GAP) + 1));
+    const weight = Math.min(4, Math.floor((gap / scoreParams.startingPairPreferredGap) + 1));
     return Array(weight).fill(pair);
   });
 

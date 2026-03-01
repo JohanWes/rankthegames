@@ -15,6 +15,7 @@ vi.mock("../lib/env", () => ({
 import {
   buildRunDefinition,
   getRoundBucketLabel,
+  getScoreBasedParams,
   MAX_RUN_ROUNDS,
   RUN_BAND_MODEL,
   type LadderSnapshot
@@ -45,6 +46,30 @@ function createSnapshot(): LadderSnapshot {
   };
 }
 
+function createHighTierSnapshot(): LadderSnapshot {
+  const scores = [
+    1000, 995, 990, 985, 980, 975, 970, 965, 960, 955,
+    950, 945, 940, 935, 930, 925, 920, 915, 910, 905
+  ];
+
+  return {
+    snapshotVersion: "2026-02-28T00:00:00.000Z",
+    builtAt: new Date("2026-02-28T00:00:00.000Z"),
+    expiresAt: Date.now() + 30_000,
+    games: scores.map((score, index) => ({
+      id: `h${index + 1}`,
+      name: `HighTier ${index + 1}`,
+      year: 2020,
+      seedRank: index + 1,
+      snapshotScore: score,
+      totalAppearances: 0,
+      imageUrl: null,
+      thumbUrl: null,
+      percentileFromBottom: Number((((scores.length - index) / scores.length) * 100).toFixed(3))
+    }))
+  };
+}
+
 function parseCoreBucket(bucket: string) {
   const match = /^cluster:(\d+)-(\d+)$/.exec(bucket);
 
@@ -57,6 +82,48 @@ function parseCoreBucket(bucket: string) {
     maxScore: Number(match[2])
   };
 }
+
+describe("getScoreBasedParams", () => {
+  it("returns wide gaps for low-rated anchors", () => {
+    const params = getScoreBasedParams(400);
+    expect(params.coreScoreRadius).toBe(150);
+    expect(params.startingPairMinGap).toBe(80);
+    expect(params.startingPairMaxGap).toBe(300);
+    expect(params.startingPairPreferredGap).toBe(175);
+  });
+
+  it("returns mid-tier values at score 700", () => {
+    const params = getScoreBasedParams(700);
+    expect(params.coreScoreRadius).toBe(80);
+    expect(params.startingPairMinGap).toBe(60);
+    expect(params.startingPairMaxGap).toBe(150);
+    expect(params.startingPairPreferredGap).toBe(100);
+  });
+
+  it("returns tight gaps for high-rated anchors", () => {
+    const params = getScoreBasedParams(900);
+    expect(params.coreScoreRadius).toBe(30);
+    expect(params.startingPairMinGap).toBe(10);
+    expect(params.startingPairMaxGap).toBe(40);
+    expect(params.startingPairPreferredGap).toBe(25);
+  });
+
+  it("interpolates between breakpoints", () => {
+    const params = getScoreBasedParams(550);
+    expect(params.coreScoreRadius).toBe(115);
+    expect(params.startingPairPreferredGap).toBe(138);
+  });
+
+  it("clamps below minimum score", () => {
+    const params = getScoreBasedParams(200);
+    expect(params).toEqual(getScoreBasedParams(400));
+  });
+
+  it("clamps above maximum score", () => {
+    const params = getScoreBasedParams(1100);
+    expect(params).toEqual(getScoreBasedParams(900));
+  });
+});
 
 describe("buildRunDefinition", () => {
   afterEach(() => {
@@ -86,20 +153,33 @@ describe("buildRunDefinition", () => {
 
     for (const outlier of outlierBuckets) {
       const gap = Number(outlier.bucket.replace("outlier:", ""));
-      expect(Math.abs(gap)).toBeGreaterThanOrEqual(200);
+      expect(Math.abs(gap)).toBeGreaterThanOrEqual(125);
       expect(Math.abs(gap)).toBeLessThanOrEqual(400);
     }
   });
 
-  it("keeps the opening pair close and exposes round bucket labels for persistence", () => {
+  it("keeps the opening pair within score-based gap bounds", () => {
     vi.spyOn(Math, "random").mockImplementation(() => 0);
 
     const run = buildRunDefinition(createSnapshot());
     const leftScore = run.games[run.initialPair.leftGameId].snapshotScore;
     const rightScore = run.games[run.initialPair.rightGameId].snapshotScore;
+    const gap = Math.abs(leftScore - rightScore);
 
-    expect(Math.abs(leftScore - rightScore)).toBeLessThanOrEqual(125);
+    expect(gap).toBeLessThanOrEqual(300);
     expect(getRoundBucketLabel(1, run.challengerQueue)).toBe("cluster:opening");
     expect(getRoundBucketLabel(2, run.challengerQueue)).toBe(run.challengerQueue[0].bucket);
+  });
+
+  it("produces tight gaps for high-tier game clusters", () => {
+    vi.spyOn(Math, "random").mockImplementation(() => 0);
+
+    const run = buildRunDefinition(createHighTierSnapshot());
+    const leftScore = run.games[run.initialPair.leftGameId].snapshotScore;
+    const rightScore = run.games[run.initialPair.rightGameId].snapshotScore;
+    const gap = Math.abs(leftScore - rightScore);
+
+    expect(gap).toBeLessThanOrEqual(40);
+    expect(gap).toBeGreaterThanOrEqual(10);
   });
 });
