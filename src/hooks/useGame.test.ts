@@ -245,12 +245,12 @@ describe("useGame", () => {
     // Play 10 correct rounds (always pick g1, which has the highest score)
     for (let round = 1; round <= 10; round++) {
       act(() => result.current.selectGame("g1"));
-      await act(async () => await vi.advanceTimersByTimeAsync(900)); // REVEAL_DONE
+      await act(async () => await vi.advanceTimersByTimeAsync(900)); // REVEAL_DONE → CORRECT
 
-      if (round < 10) {
-        await act(async () => await vi.advanceTimersByTimeAsync(1100)); // TRANSITION_DONE
-        await act(async () => await vi.advanceTimersByTimeAsync(500)); // SWAP_DONE
-      }
+      // After CORRECT, wait for TRANSITION_DONE and SWAP_DONE
+      // For round 10, SWAP_DONE will transition to RESETTING
+      await act(async () => await vi.advanceTimersByTimeAsync(1100)); // TRANSITION_DONE
+      await act(async () => await vi.advanceTimersByTimeAsync(500)); // SWAP_DONE
     }
 
     expect(result.current.phase).toBe("RESETTING");
@@ -268,12 +268,12 @@ describe("useGame", () => {
     // Play through all 10 rounds
     for (let round = 1; round <= 10; round++) {
       act(() => result.current.selectGame("g1"));
-      await act(async () => await vi.advanceTimersByTimeAsync(900));
+      await act(async () => await vi.advanceTimersByTimeAsync(900)); // REVEAL_DONE → CORRECT
 
-      if (round < 10) {
-        await act(async () => await vi.advanceTimersByTimeAsync(1100));
-        await act(async () => await vi.advanceTimersByTimeAsync(500));
-      }
+      // After CORRECT, wait for TRANSITION_DONE and SWAP_DONE
+      // For round 10, SWAP_DONE will transition to RESETTING
+      await act(async () => await vi.advanceTimersByTimeAsync(1100));
+      await act(async () => await vi.advanceTimersByTimeAsync(500));
     }
 
     expect(result.current.phase).toBe("RESETTING");

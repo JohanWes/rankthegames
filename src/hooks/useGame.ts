@@ -154,17 +154,6 @@ function reducer(state: State, action: Action): State {
         const newHighScore = Math.max(state.highScore, newStreak);
         const isNewHighScore = newStreak > state.previousStreak;
 
-        // If we just completed the max round correctly, trigger a reset
-        if (state.currentRound >= MAX_ROUNDS) {
-          return {
-            ...state,
-            phase: "RESETTING",
-            streak: newStreak,
-            highScore: newHighScore,
-            isNewHighScore
-          };
-        }
-
         return {
           ...state,
           phase: "CORRECT",
@@ -200,6 +189,13 @@ function reducer(state: State, action: Action): State {
 
     case "SWAP_DONE": {
       if (state.phase !== "TRANSITIONING") return state;
+
+      if (state.currentRound >= MAX_ROUNDS) {
+        return {
+          ...state,
+          phase: "RESETTING"
+        };
+      }
 
       // Winner-stays: picked game becomes left, next challenger becomes right
       const lastSelection = state.selections[state.selections.length - 1];
