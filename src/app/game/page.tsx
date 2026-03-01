@@ -152,7 +152,7 @@ export default function GamePage() {
       />
 
       {/* Game area */}
-      <div className="relative flex min-h-screen items-center justify-center px-0 pt-14 pb-8 md:gap-6 md:px-4 md:pt-16">
+      <div className="relative flex min-h-screen flex-col items-center justify-center px-0 pt-14 pb-8 md:flex-row md:gap-6 md:px-4 md:pt-16">
         {game.leftGame && game.rightGame && (
           <MobileCarousel
             locked={game.phase !== "AWAITING_CHOICE"}

@@ -93,8 +93,8 @@ export function MobileCarousel({
         ref={containerRef}
         onScroll={handleScroll}
         className={`
-          flex snap-x snap-mandatory scroll-smooth no-scrollbar
-          md:snap-none md:overflow-visible md:justify-center md:gap-6
+          w-screen flex snap-x snap-mandatory scroll-smooth no-scrollbar
+          md:w-auto md:snap-none md:overflow-visible md:justify-center md:gap-6
           ${locked ? "overflow-x-hidden" : "overflow-x-auto"}
         `}
       >

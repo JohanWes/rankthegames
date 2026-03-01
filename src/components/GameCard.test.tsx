@@ -19,8 +19,8 @@ describe("GameCard", () => {
     render(
       <GameCard game={baseGame} state="idle" position="left" />
     );
-    expect(screen.getByText("Test Game")).toBeInTheDocument();
-    expect(screen.getByText("2023")).toBeInTheDocument();
+    expect(screen.getAllByText("Test Game").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("2023").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows score when showScore is true", () => {

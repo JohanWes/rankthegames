@@ -144,102 +144,114 @@ export function GameCard({
   const showResult = state === "correct" || state === "incorrect";
 
   return (
-    <motion.button
-      type="button"
-      onClick={canClick ? onSelect : undefined}
-      disabled={!canClick}
-      aria-label={`Select ${game.name}`}
-      data-position={position}
-      animate={getAnimateProps(state)}
-      whileHover={canClick ? { scale: 1.02, y: -4 } : undefined}
-      whileTap={canClick ? { scale: 0.96 } : undefined}
-      transition={{ type: "spring", stiffness: 300, damping: 22 }}
-      className={`
-        relative w-full overflow-hidden rounded-2xl border-2
-        aspect-[3/4]
-        ${borderColors[state]}
-        ${glowStyles[state]}
-        ${canClick ? "cursor-pointer" : "cursor-default"}
-        bg-bg-elevated
-      `}
-    >
-      {/* Cover image */}
-      {game.imageUrl ? (
-        <Image
-          src={game.imageUrl}
-          alt={game.name}
-          fill
-          className="object-cover"
-          sizes="(max-width: 768px) 50vw, 40vw"
-          priority={priority}
-          unoptimized
-        />
-      ) : (
-        /* Gradient fallback with gamepad icon */
-        <div
-          className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4"
-          style={{
-            background:
-              "linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,240,255,0.1) 100%), #161B22",
-          }}
-        >
-          <GamepadIcon />
-          <span className="text-center font-display text-2xl font-semibold text-text-secondary">
+    <div>
+      <motion.button
+        type="button"
+        onClick={canClick ? onSelect : undefined}
+        disabled={!canClick}
+        aria-label={`Select ${game.name}`}
+        data-position={position}
+        animate={getAnimateProps(state)}
+        whileHover={canClick ? { scale: 1.02, y: -4 } : undefined}
+        whileTap={canClick ? { scale: 0.96 } : undefined}
+        transition={{ type: "spring", stiffness: 300, damping: 22 }}
+        className={`
+          relative w-full overflow-hidden rounded-2xl border-2
+          aspect-[3/4]
+          ${borderColors[state]}
+          ${glowStyles[state]}
+          ${canClick ? "cursor-pointer" : "cursor-default"}
+          bg-bg-elevated
+        `}
+      >
+        {/* Cover image */}
+        {game.imageUrl ? (
+          <Image
+            src={game.imageUrl}
+            alt={game.name}
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 50vw, 40vw"
+            priority={priority}
+            unoptimized
+          />
+        ) : (
+          /* Gradient fallback with gamepad icon */
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,240,255,0.1) 100%), #161B22",
+            }}
+          >
+            <GamepadIcon />
+            <span className="text-center font-display text-2xl font-semibold text-text-secondary">
+              {game.name}
+            </span>
+          </div>
+        )}
+
+        {/* Crown for higher-scored game */}
+        {isHigher && showScore && (
+          <motion.div
+            initial={{ scale: 0, rotate: -20 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 350, damping: 14, delay: 0.15 }}
+            className="absolute top-3 left-3 z-20 text-2xl leading-none"
+            aria-label="Higher score"
+          >
+            <span className="drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]">
+              ♛
+            </span>
+          </motion.div>
+        )}
+
+        {/* Result icon (checkmark / X) */}
+        {showResult && <ResultIcon isCorrect={state === "correct"} />}
+
+        {/* Bottom gradient scrim — desktop only */}
+        <div className="hidden md:block absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-16">
+          <h3 className="font-display text-2xl leading-tight font-semibold text-text-primary drop-shadow-lg">
             {game.name}
-          </span>
+          </h3>
+          {game.year != null && (
+            <p className="mt-0.5 text-sm text-text-secondary">{game.year}</p>
+          )}
         </div>
-      )}
 
-      {/* Crown for higher-scored game */}
-      {isHigher && showScore && (
-        <motion.div
-          initial={{ scale: 0, rotate: -20 }}
-          animate={{ scale: 1, rotate: 0 }}
-          transition={{ type: "spring", stiffness: 350, damping: 14, delay: 0.15 }}
-          className="absolute top-3 left-3 z-20 text-2xl leading-none"
-          aria-label="Higher score"
-        >
-          <span className="drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]">
-            ♛
-          </span>
-        </motion.div>
-      )}
+        {/* Score overlay — bottom-anchored glassmorphism panel */}
+        {showScore && (
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 200, damping: 20, delay: 0.1 }}
+            className="absolute inset-x-0 bottom-0 z-10 p-4"
+          >
+            <div
+              className="glass rounded-xl px-4 py-3 text-center"
+              style={{
+                background: "rgba(7, 11, 20, 0.75)",
+                backdropFilter: "blur(12px) saturate(1.3)",
+              }}
+            >
+              <ScoreDisplay score={game.snapshotScore} />
+              <p className="mt-0.5 text-[10px] uppercase tracking-[0.2em] text-text-secondary">
+                Live Score
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </motion.button>
 
-      {/* Result icon (checkmark / X) */}
-      {showResult && <ResultIcon isCorrect={state === "correct"} />}
-
-      {/* Bottom gradient scrim */}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-16">
-        <h3 className="font-display text-2xl leading-tight font-semibold text-text-primary drop-shadow-lg">
+      {/* Title below card — mobile only */}
+      <div className="mt-2 px-1 md:hidden">
+        <h3 className="font-display text-xl leading-tight font-semibold text-text-primary">
           {game.name}
         </h3>
         {game.year != null && (
           <p className="mt-0.5 text-sm text-text-secondary">{game.year}</p>
         )}
       </div>
-
-      {/* Score overlay — bottom-anchored glassmorphism panel */}
-      {showScore && (
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 200, damping: 20, delay: 0.1 }}
-          className="absolute inset-x-0 bottom-0 z-10 p-4"
-        >
-          <div
-            className="glass rounded-xl px-4 py-3 text-center"
-            style={{
-              background: "rgba(7, 11, 20, 0.75)",
-              backdropFilter: "blur(12px) saturate(1.3)",
-            }}
-          >
-            <ScoreDisplay score={game.snapshotScore} />
-            <p className="mt-0.5 text-[10px] uppercase tracking-[0.2em] text-text-secondary">
-              Live Score
-            </p>
-          </div>
-        </motion.div>
-      )}
-    </motion.button>
+    </div>
   );
 }
