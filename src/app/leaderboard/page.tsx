@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { getLeaderboard } from "@/server/leaderboard";
 
-export const dynamic = "force-dynamic";
 export const revalidate = 30;
 
 const RANK_ACCENT: Record<number, string> = {

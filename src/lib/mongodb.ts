@@ -9,7 +9,9 @@ import { env } from "./env.ts";
 const clientOptions: MongoClientOptions = {
   maxPoolSize: 10,
   minPoolSize: 1,
-  maxIdleTimeMS: 30_000
+  maxIdleTimeMS: 30_000,
+  serverSelectionTimeoutMS: 5_000,
+  connectTimeoutMS: 5_000
 };
 
 declare global {

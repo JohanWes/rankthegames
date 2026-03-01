@@ -173,7 +173,6 @@ export function GameCard({
             className="object-cover"
             sizes="(max-width: 768px) 50vw, 40vw"
             priority={priority}
-            unoptimized
           />
         ) : (
           /* Gradient fallback with gamepad icon */

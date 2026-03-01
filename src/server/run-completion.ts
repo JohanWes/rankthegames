@@ -101,7 +101,6 @@ export async function completeRunSubmission(
   }
 
   const submittedRounds = buildSubmittedRounds(input, tokenPayload);
-  await rejectIfRunAlreadyAccepted(input.runId);
 
   const submittedAt = new Date();
   const ratingVersion = submittedAt.toISOString();
@@ -119,7 +118,8 @@ export async function completeRunSubmission(
               }
             },
             {
-              session
+              session,
+              projection: { _id: 1, currentScore: 1 }
             }
           )
           .toArray();
@@ -330,20 +330,6 @@ export async function completeRunSubmission(
   }
 }
 
-async function rejectIfRunAlreadyAccepted(runId: string) {
-  const existingSubmission = await withMongoSession(async (_session, db) =>
-    getCollections(db).runSubmissions.findOne(
-      { runId },
-      {
-        projection: { _id: 1 }
-      }
-    )
-  );
-
-  if (existingSubmission) {
-    throw new DuplicateRunSubmissionError();
-  }
-}
 
 function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenPayload): SubmittedRound[] {
   const selections = [...input.selections].sort((left, right) => left.round - right.round);
