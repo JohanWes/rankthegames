@@ -234,7 +234,7 @@ describe("useGame", () => {
     expect(result.current.error).toBe("Server error");
   });
 
-  it("goes to RESETTING after completing all 10 rounds correctly", async () => {
+  it("goes to RESETTING after completing all 20 rounds correctly", async () => {
     mockFetchSuccess();
     const { result } = renderHook(() => useGame());
 
@@ -242,19 +242,19 @@ describe("useGame", () => {
       await vi.runAllTimersAsync();
     });
 
-    // Play 10 correct rounds (always pick g1, which has the highest score)
-    for (let round = 1; round <= 10; round++) {
+    // Play 20 correct rounds (always pick g1, which has the highest score)
+    for (let round = 1; round <= 20; round++) {
       act(() => result.current.selectGame("g1"));
       await act(async () => await vi.advanceTimersByTimeAsync(900)); // REVEAL_DONE → CORRECT
 
       // After CORRECT, wait for TRANSITION_DONE and SWAP_DONE
-      // For round 10, SWAP_DONE will transition to RESETTING
+      // For round 20, SWAP_DONE will transition to RESETTING
       await act(async () => await vi.advanceTimersByTimeAsync(1100)); // TRANSITION_DONE
       await act(async () => await vi.advanceTimersByTimeAsync(500)); // SWAP_DONE
     }
 
     expect(result.current.phase).toBe("RESETTING");
-    expect(result.current.streak).toBe(10);
+    expect(result.current.streak).toBe(20);
   });
 
   it("continueAfterReset preserves streak and loads new run", async () => {
@@ -265,19 +265,19 @@ describe("useGame", () => {
       await vi.runAllTimersAsync();
     });
 
-    // Play through all 10 rounds
-    for (let round = 1; round <= 10; round++) {
+    // Play through all 20 rounds
+    for (let round = 1; round <= 20; round++) {
       act(() => result.current.selectGame("g1"));
       await act(async () => await vi.advanceTimersByTimeAsync(900)); // REVEAL_DONE → CORRECT
 
       // After CORRECT, wait for TRANSITION_DONE and SWAP_DONE
-      // For round 10, SWAP_DONE will transition to RESETTING
+      // For round 20, SWAP_DONE will transition to RESETTING
       await act(async () => await vi.advanceTimersByTimeAsync(1100));
       await act(async () => await vi.advanceTimersByTimeAsync(500));
     }
 
     expect(result.current.phase).toBe("RESETTING");
-    expect(result.current.streak).toBe(10);
+    expect(result.current.streak).toBe(20);
 
     // Continue after reset with a new run
     const newRun = createMockRunResponse({ runId: "test-run-002" });
@@ -292,7 +292,7 @@ describe("useGame", () => {
     });
 
     expect(result.current.phase).toBe("AWAITING_CHOICE");
-    expect(result.current.streak).toBe(10); // Streak preserved
+    expect(result.current.streak).toBe(20); // Streak preserved
     expect(result.current.currentRound).toBe(1); // Round reset
     expect(result.current.runId).toBe("test-run-002");
   });

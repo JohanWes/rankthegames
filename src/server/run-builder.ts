@@ -2,13 +2,17 @@ import { randomUUID } from "node:crypto";
 import { getGamesCollection } from "./collections.ts";
 
 const LADDER_SNAPSHOT_TTL_MS = 30_000;
-export const MAX_RUN_ROUNDS = 10;
+export const MAX_RUN_ROUNDS = 20;
 const SELECTION_POOL_SIZE = 20;
 const OUTLIER_MIN_SCORE_GAP = 125;
-const OUTLIER_MAX_SCORE_GAP = 225;
+const OUTLIER_MAX_SCORE_GAP = 300;
 const MAX_OUTLIERS_PER_RUN = 2;
-const ANCHOR_MIN_PERCENTILE = 15;
-const ANCHOR_MAX_PERCENTILE = 85;
+const SCORE_BANDS: ScoreWindow[] = [
+  { minScore: 1, maxScore: 549 },
+  { minScore: 550, maxScore: 749 },
+  { minScore: 750, maxScore: 899 },
+  { minScore: 900, maxScore: Infinity },
+];
 const OPENING_BUCKET_LABEL = "cluster:opening";
 
 export const RUN_BAND_MODEL = "score_cluster.v1";
@@ -439,13 +443,25 @@ function buildClusterPlan(games: LadderSnapshotGame[]): ClusterPlan {
 }
 
 function getAnchorCandidates(games: LadderSnapshotGame[]) {
-  const prioritized = prioritizeByExposure(games).filter(
-    (game) =>
-      game.percentileFromBottom >= ANCHOR_MIN_PERCENTILE &&
-      game.percentileFromBottom <= ANCHOR_MAX_PERCENTILE
-  );
+  const populatedBands = SCORE_BANDS.map((band) => ({
+    band,
+    games: games.filter(
+      (game) => game.snapshotScore >= band.minScore && game.snapshotScore <= band.maxScore
+    ),
+  })).filter((entry) => entry.games.length > 0);
 
-  return prioritized.length > 0 ? prioritized : prioritizeByExposure(games);
+  if (populatedBands.length === 0) {
+    return prioritizeByExposure(games);
+  }
+
+  const weights = populatedBands.map((entry) => {
+    const avgAppearances =
+      entry.games.reduce((sum, game) => sum + game.totalAppearances, 0) / entry.games.length;
+    return 1 / (1 + avgAppearances);
+  });
+
+  const selected = weightedSample(populatedBands, weights);
+  return prioritizeByExposure(selected.games);
 }
 
 function determineOutlierCount(coreCount: number, outlierCount: number, totalGamesNeeded: number) {
@@ -684,6 +700,18 @@ function prioritizeByExposure(candidates: LadderSnapshotGame[]) {
 
 function sample<T>(values: readonly T[]) {
   return values[Math.floor(Math.random() * values.length)];
+}
+
+function weightedSample<T>(items: readonly T[], weights: readonly number[]): T {
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  let random = Math.random() * totalWeight;
+
+  for (let i = 0; i < items.length; i++) {
+    random -= weights[i];
+    if (random <= 0) return items[i];
+  }
+
+  return items[items.length - 1];
 }
 
 function getPercentileFromBottom(index: number, totalGames: number) {

@@ -19,9 +19,9 @@ function createGame(overrides: Partial<RunGame> & { id: string }): RunGame {
 /**
  * Create a deterministic mock run response.
  *
- * Default: 11 games (initial pair + 9 challengers).
+ * Default: 21 games (initial pair + 19 challengers).
  * Left game (g1) has score 600, right game (g2) has score 500.
- * Challengers have descending scores from 490 to 410.
+ * Challengers have descending scores from 490 to 310.
  */
 export function createMockRunResponse(
   overrides?: Partial<CreateRunResponse>
@@ -29,7 +29,7 @@ export function createMockRunResponse(
   const leftGame = createGame({ id: "g1", name: "Game One", snapshotScore: 600, seedRank: 1 });
   const rightGame = createGame({ id: "g2", name: "Game Two", snapshotScore: 500, seedRank: 2 });
 
-  const challengerIds = ["g3", "g4", "g5", "g6", "g7", "g8", "g9", "g10", "g11"];
+  const challengerIds = Array.from({ length: 19 }, (_, i) => `g${i + 3}`);
   const challengers = challengerIds.map((id, i) =>
     createGame({
       id,

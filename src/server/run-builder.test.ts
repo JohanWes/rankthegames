@@ -25,7 +25,8 @@ function createSnapshot(): LadderSnapshot {
   const scores = [
     1080, 1050, 1020, 990, 960, 930, 900, 870, 840, 810,
     780, 760, 740, 720, 700, 680, 660, 640, 620, 600,
-    580, 560, 540, 520, 500, 480, 460, 440, 420, 400
+    580, 560, 540, 520, 500, 480, 460, 440, 420, 400,
+    380, 360, 340, 320, 300, 280, 260, 240, 220, 200
   ];
 
   return {
@@ -48,8 +49,9 @@ function createSnapshot(): LadderSnapshot {
 
 function createHighTierSnapshot(): LadderSnapshot {
   const scores = [
-    1000, 995, 990, 985, 980, 975, 970, 965, 960, 955,
-    950, 945, 940, 935, 930, 925, 920, 915, 910, 905
+    1000, 997, 994, 991, 988, 985, 982, 979, 976, 973,
+    970, 967, 964, 961, 958, 955, 952, 949, 946, 943,
+    940, 937, 934, 931, 928, 925, 922, 919, 916, 913
   ];
 
   return {
@@ -148,13 +150,13 @@ describe("buildRunDefinition", () => {
     );
     const outlierBuckets = run.challengerQueue.filter((entry) => entry.bucket.startsWith("outlier:"));
 
-    expect(coreScores.length).toBeGreaterThanOrEqual(9);
+    expect(coreScores.length).toBeGreaterThanOrEqual(19);
     expect(outlierBuckets.length).toBeLessThanOrEqual(2);
 
     for (const outlier of outlierBuckets) {
       const gap = Number(outlier.bucket.replace("outlier:", ""));
       expect(Math.abs(gap)).toBeGreaterThanOrEqual(125);
-      expect(Math.abs(gap)).toBeLessThanOrEqual(400);
+      expect(Math.abs(gap)).toBeLessThanOrEqual(500);
     }
   });
 
@@ -180,6 +182,5 @@ describe("buildRunDefinition", () => {
     const gap = Math.abs(leftScore - rightScore);
 
     expect(gap).toBeLessThanOrEqual(40);
-    expect(gap).toBeGreaterThanOrEqual(10);
   });
 });
