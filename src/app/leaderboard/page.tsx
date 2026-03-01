@@ -21,18 +21,18 @@ export default async function LeaderboardPage() {
         <h1 className="font-display text-5xl font-bold text-accent glow-accent-text">
           LEADERBOARD
         </h1>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3">
           <Link
             href="/game"
-            className="rounded-full border border-accent/60 bg-accent/10 px-6 py-2 font-display text-lg font-bold text-accent transition-all hover:bg-accent/20 hover:border-accent"
+            className="flex items-center rounded-full border border-accent/60 bg-accent/10 px-6 py-2 font-display text-lg font-bold text-accent transition-all hover:bg-accent/20 hover:border-accent"
           >
             PLAY
           </Link>
           <Link
             href="/"
-            className="rounded-full border border-white/10 px-6 py-2 text-sm text-text-secondary transition-colors hover:text-accent"
+            className="flex items-center rounded-full border border-white/10 bg-white/5 px-6 py-2 font-display text-lg font-bold text-text-secondary transition-all hover:border-accent hover:text-accent"
           >
-            Home
+            HOME
           </Link>
         </div>
       </div>
