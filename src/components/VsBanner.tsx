@@ -6,7 +6,7 @@ type VsBannerProps = {
 
 export function VsBanner({ state }: VsBannerProps) {
   return (
-    <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+    <div className="hidden md:block absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
       <div
         className={`
           glass flex h-20 w-20 items-center justify-center rounded-full

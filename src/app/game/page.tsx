@@ -6,6 +6,7 @@ import { useBeaconSubmit } from "@/hooks/useBeaconSubmit";
 import { usePreloadImages } from "@/hooks/usePreloadImages";
 import { GameCard, type GameCardState } from "@/components/GameCard";
 import { VsBanner } from "@/components/VsBanner";
+import { MobileCarousel } from "@/components/MobileCarousel";
 import { GameHeader } from "@/components/GameHeader";
 import { GameOverModal } from "@/components/GameOverModal";
 import { ResetPopup } from "@/components/ResetPopup";
@@ -151,36 +152,46 @@ export default function GamePage() {
       />
 
       {/* Game area */}
-      <div className="relative flex min-h-screen flex-col items-center justify-center gap-4 px-4 pt-14 pb-8 md:flex-row md:gap-6 md:pt-16">
-        {game.leftGame && (
-          <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
-            <GameCard
-              game={game.leftGame}
-              position="left"
-              state={getCardState(game.phase, pickedId, game.leftGame.id, correctId)}
-              onSelect={() => game.selectGame(game.leftGame!.id)}
-              disabled={game.phase !== "AWAITING_CHOICE"}
-              showScore={showScores}
-              priority={game.currentRound === 1}
-            />
-          </div>
+      <div className="relative flex min-h-screen items-center justify-center px-0 pt-14 pb-8 md:gap-6 md:px-4 md:pt-16">
+        {game.leftGame && game.rightGame && (
+          <MobileCarousel
+            locked={game.phase !== "AWAITING_CHOICE"}
+            scrollToIndex={
+              game.phase === "TRANSITIONING"
+                ? 0
+                : game.phase === "REVEALING" && pickedId
+                  ? pickedId === game.leftGame.id
+                    ? 0
+                    : 1
+                  : undefined
+            }
+          >
+            <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
+              <GameCard
+                game={game.leftGame}
+                position="left"
+                state={getCardState(game.phase, pickedId, game.leftGame.id, correctId)}
+                onSelect={() => game.selectGame(game.leftGame!.id)}
+                disabled={game.phase !== "AWAITING_CHOICE"}
+                showScore={showScores}
+                priority={game.currentRound === 1}
+              />
+            </div>
+            <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
+              <GameCard
+                game={game.rightGame}
+                position="right"
+                state={getCardState(game.phase, pickedId, game.rightGame.id, correctId)}
+                onSelect={() => game.selectGame(game.rightGame!.id)}
+                disabled={game.phase !== "AWAITING_CHOICE"}
+                showScore={showScores}
+                priority={game.currentRound === 1}
+              />
+            </div>
+          </MobileCarousel>
         )}
 
         <VsBanner state={getVsState(game.phase)} />
-
-        {game.rightGame && (
-          <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
-            <GameCard
-              game={game.rightGame}
-              position="right"
-              state={getCardState(game.phase, pickedId, game.rightGame.id, correctId)}
-              onSelect={() => game.selectGame(game.rightGame!.id)}
-              disabled={game.phase !== "AWAITING_CHOICE"}
-              showScore={showScores}
-              priority={game.currentRound === 1}
-            />
-          </div>
-        )}
       </div>
 
       <ScreenFlash type={getFlashType(game.phase)} />
