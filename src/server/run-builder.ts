@@ -674,16 +674,11 @@ function prioritizeOutlierCandidates(candidates: LadderSnapshotGame[], anchorSco
 }
 
 function prioritizeByExposure(candidates: LadderSnapshotGame[]) {
-  return [...candidates].sort((left, right) => {
-    if (left.totalAppearances !== right.totalAppearances) {
-      return left.totalAppearances - right.totalAppearances;
-    }
-
-    if (left.snapshotScore !== right.snapshotScore) {
-      return left.snapshotScore - right.snapshotScore;
-    }
-
-    return left.id.localeCompare(right.id);
+  // Shuffle first so that within each appearance tier, scores are randomly spread
+  // rather than clustered at the low end (which starved pickStartingPair of gap diversity)
+  const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+  return shuffled.sort((left, right) => {
+    return left.totalAppearances - right.totalAppearances;
   });
 }
 
