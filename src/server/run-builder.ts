@@ -4,12 +4,14 @@ import { getGamesCollection } from "./collections.ts";
 const LADDER_SNAPSHOT_TTL_MS = 30_000;
 export const MAX_RUN_ROUNDS = 10;
 const SELECTION_POOL_SIZE = 20;
-const STARTING_PAIR_MAX_SCORE_GAP = 125;
-const CORE_SCORE_RADIUS = 100;
-const CORE_RADIUS_EXPANSION_STEP = 25;
-const MAX_CORE_SCORE_RADIUS = 175;
-const OUTLIER_MIN_SCORE_GAP = 200;
-const OUTLIER_MAX_SCORE_GAP = 400;
+const STARTING_PAIR_MIN_SCORE_GAP = 40;
+const STARTING_PAIR_MAX_SCORE_GAP = 100;
+const STARTING_PAIR_PREFERRED_GAP = 65;
+const CORE_SCORE_RADIUS = 60;
+const CORE_RADIUS_EXPANSION_STEP = 20;
+const MAX_CORE_SCORE_RADIUS = 110;
+const OUTLIER_MIN_SCORE_GAP = 125;
+const OUTLIER_MAX_SCORE_GAP = 225;
 const MAX_OUTLIERS_PER_RUN = 2;
 const ANCHOR_MIN_PERCENTILE = 15;
 const ANCHOR_MAX_PERCENTILE = 85;
@@ -400,20 +402,33 @@ function pickStartingPair(candidates: LadderSnapshotGame[]) {
     throw new Error("Not enough eligible games were available to choose an opening pair.");
   }
 
-  const compatiblePairs: Array<[LadderSnapshotGame, LadderSnapshotGame]> = [];
+  const compatiblePairs: Array<{ pair: [LadderSnapshotGame, LadderSnapshotGame]; gap: number }> = [];
 
   for (let leftIndex = 0; leftIndex < prioritizedPool.length - 1; leftIndex += 1) {
     for (let rightIndex = leftIndex + 1; rightIndex < prioritizedPool.length; rightIndex += 1) {
       const left = prioritizedPool[leftIndex];
       const right = prioritizedPool[rightIndex];
+      const gap = Math.abs(left.snapshotScore - right.snapshotScore);
 
-      if (Math.abs(left.snapshotScore - right.snapshotScore) <= STARTING_PAIR_MAX_SCORE_GAP) {
-        compatiblePairs.push([left, right]);
+      if (gap >= STARTING_PAIR_MIN_SCORE_GAP && gap <= STARTING_PAIR_MAX_SCORE_GAP) {
+        compatiblePairs.push({ pair: [left, right], gap });
       }
     }
   }
 
-  const [first, second] = compatiblePairs.length > 0 ? sample(compatiblePairs) : sampleAllPairs(prioritizedPool);
+  if (compatiblePairs.length === 0) {
+    const [first, second] = sampleAllPairs(prioritizedPool);
+    return Math.random() < 0.5
+      ? { left: first, right: second }
+      : { left: second, right: first };
+  }
+
+  const weightedPairs = compatiblePairs.flatMap(({ pair, gap }) => {
+    const weight = Math.min(4, Math.floor((gap / STARTING_PAIR_PREFERRED_GAP) + 1));
+    return Array(weight).fill(pair);
+  });
+
+  const [first, second] = sample(weightedPairs);
 
   return Math.random() < 0.5
     ? { left: first, right: second }
