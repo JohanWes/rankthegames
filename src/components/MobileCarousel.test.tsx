@@ -10,9 +10,8 @@ describe("MobileCarousel", () => {
         <div>Card B</div>
       </MobileCarousel>
     );
-    // Children appear twice: once in mobile carousel, once in desktop pass-through
-    expect(screen.getAllByText("Card A")).toHaveLength(2);
-    expect(screen.getAllByText("Card B")).toHaveLength(2);
+    expect(screen.getByText("Card A")).toBeInTheDocument();
+    expect(screen.getByText("Card B")).toBeInTheDocument();
   });
 
   it("renders VS badge and dot indicators", () => {
