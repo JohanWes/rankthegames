@@ -88,13 +88,13 @@ export function MobileCarousel({
         <DotIndicator active={activeIndex === 1} />
       </div>
 
-      {/* Carousel on mobile, regular flex items on desktop */}
+      {/* Carousel on mobile only - hidden at md+ */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
         className={`
           w-screen flex snap-x snap-mandatory scroll-smooth no-scrollbar
-          md:w-auto md:snap-none md:overflow-visible md:justify-center md:gap-6
+          md:hidden
           ${locked ? "overflow-x-hidden" : "overflow-x-auto"}
         `}
       >
@@ -104,11 +104,16 @@ export function MobileCarousel({
             ref={(el) => {
               slotRefs.current[i] = el;
             }}
-            className="w-[86vw] flex-shrink-0 snap-start pl-3 pr-1 last:pr-3 max-h-[70svh] md:w-auto md:flex-shrink md:snap-align-none md:pl-0 md:pr-0 md:max-h-none"
+            className="w-[86vw] flex-shrink-0 snap-start pl-3 pr-1 last:pr-3 max-h-[70svh]"
           >
             {child}
           </div>
         ))}
+      </div>
+
+      {/* Desktop pass-through - render children directly without wrapper */}
+      <div className="hidden md:contents">
+        {children}
       </div>
     </>
   );
