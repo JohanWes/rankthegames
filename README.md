@@ -2,6 +2,8 @@
 
 A Higher-Lower style web game where players guess which video game is more popular.
 
+![Gameplay Screenshot](screenshot.png)
+
 ## Tech Stack
 
 - Next.js 15
