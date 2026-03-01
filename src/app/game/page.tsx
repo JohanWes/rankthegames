@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useGame } from "@/hooks/useGame";
 import { useBeaconSubmit } from "@/hooks/useBeaconSubmit";
 import { usePreloadImages } from "@/hooks/usePreloadImages";
+import { warmRunPrefetch } from "@/lib/run-prefetch";
 import { GameCard, type GameCardState } from "@/components/GameCard";
 import { VsBanner } from "@/components/VsBanner";
 import { MobileCarousel } from "@/components/MobileCarousel";
@@ -99,6 +100,13 @@ export default function GamePage() {
       }
     }
   }, [game.phase, game.runId, game.streak, game.selections.length, submitRun]);
+
+  // Prefetch next run while player is on the game over screen
+  useEffect(() => {
+    if (game.phase === "GAME_OVER") {
+      void warmRunPrefetch().catch(() => {});
+    }
+  }, [game.phase]);
 
   const handlePlayAgain = () => {
     submittedForRunRef.current = null;
