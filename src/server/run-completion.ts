@@ -152,6 +152,60 @@ export async function completeRunSubmission(
 
           const leftPreScore = leftState.currentScore;
           const rightPreScore = rightState.currentScore;
+          const isTie = leftPreScore === rightPreScore;
+
+          if (isTie) {
+            const tieDelta = 3;
+            const pickedLeft = round.pickedGameId === round.leftGameId;
+
+            const leftDelta = pickedLeft ? tieDelta : -tieDelta;
+            const rightDelta = pickedLeft ? -tieDelta : tieDelta;
+
+            leftState.currentScore = leftPreScore + leftDelta;
+            rightState.currentScore = rightPreScore + rightDelta;
+
+            bumpAggregate(aggregatesById, round.leftGameId, leftState.currentScore, {
+              wins: pickedLeft ? 1 : 0,
+              losses: pickedLeft ? 0 : 1,
+              totalMatches: 1,
+              totalAppearances: 1
+            });
+            bumpAggregate(aggregatesById, round.rightGameId, rightState.currentScore, {
+              wins: pickedLeft ? 0 : 1,
+              losses: pickedLeft ? 1 : 0,
+              totalMatches: 1,
+              totalAppearances: 1
+            });
+
+            if (round.wasCorrect) {
+              finalScore += 1;
+            }
+
+            matchEvents.push({
+              _id: new ObjectId(),
+              runId: input.runId,
+              round: round.round,
+              snapshotVersion: tokenPayload.snapshotVersion,
+              leftGameId: leftState.id,
+              rightGameId: rightState.id,
+              pickedGameId: toObjectId(round.pickedGameId, "pickedGameId"),
+              correctGameId: toObjectId(round.correctGameId, "correctGameId"),
+              snapshotLeftScore: round.snapshotLeftScore,
+              snapshotRightScore: round.snapshotRightScore,
+              appliedLeftPreScore: leftPreScore,
+              appliedRightPreScore: rightPreScore,
+              appliedLeftPostScore: leftState.currentScore,
+              appliedRightPostScore: rightState.currentScore,
+              leftDelta,
+              rightDelta,
+              wasCorrect: round.wasCorrect,
+              bucket: round.bucket,
+              ipHash,
+              submittedAt
+            });
+            continue;
+          }
+
           const delta = getRatingDelta(
             round.leftGameId,
             leftPreScore,
@@ -352,8 +406,12 @@ function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenP
 
     const snapshotLeftScore = getSnapshotScore(tokenPayload, currentLeftGameId);
     const snapshotRightScore = getSnapshotScore(tokenPayload, currentRightGameId);
-    const correctGameId =
-      snapshotLeftScore >= snapshotRightScore ? currentLeftGameId : currentRightGameId;
+    const isTie = snapshotLeftScore === snapshotRightScore;
+    const correctGameId = isTie
+      ? null
+      : snapshotLeftScore > snapshotRightScore
+        ? currentLeftGameId
+        : currentRightGameId;
 
     submittedRounds.push({
       round: selection.round,
@@ -361,10 +419,10 @@ function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenP
       leftGameId: currentLeftGameId,
       rightGameId: currentRightGameId,
       pickedGameId: selection.pickedGameId,
-      correctGameId,
+      correctGameId: isTie ? currentLeftGameId : correctGameId!,
       snapshotLeftScore,
       snapshotRightScore,
-      wasCorrect: selection.pickedGameId === correctGameId
+      wasCorrect: isTie || selection.pickedGameId === correctGameId
     });
 
     if (selection.round < selections.length) {

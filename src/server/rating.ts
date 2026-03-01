@@ -1,7 +1,7 @@
 export type RatingDelta = {
   winnerDelta: number;
   loserDelta: number;
-  expectedWinnerId: string;
+  expectedWinnerId: string | null;
   wasUpset: boolean;
 };
 
@@ -25,10 +25,11 @@ export function getRatingDelta(
   }
 
   const gap = Math.abs(leftScore - rightScore);
-  const expectedWinnerId = leftScore >= rightScore ? leftGameId : rightGameId;
+  const isTie = leftScore === rightScore;
+  const expectedWinnerId = isTie ? null : leftScore > rightScore ? leftGameId : rightGameId;
   const loserId = pickedGameId === leftGameId ? rightGameId : leftGameId;
   const loserScore = loserId === leftGameId ? leftScore : rightScore;
-  const wasUpset = gap >= 100 && pickedGameId !== expectedWinnerId;
+  const wasUpset = !isTie && gap >= 100 && pickedGameId !== expectedWinnerId;
 
   let winnerDelta = 3;
   let loserDelta = -3;

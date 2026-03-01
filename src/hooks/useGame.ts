@@ -260,9 +260,9 @@ export function useGame(): UseGameReturn {
   const isCorrectPick = useCallback(
     (gameId: string): boolean => {
       if (!state.leftGame || !state.rightGame) return false;
-      // Left wins when left >= right (ties go to left)
+      if (state.leftGame.snapshotScore === state.rightGame.snapshotScore) return true;
       const correctId =
-        state.leftGame.snapshotScore >= state.rightGame.snapshotScore
+        state.leftGame.snapshotScore > state.rightGame.snapshotScore
           ? state.leftGame.id
           : state.rightGame.id;
       return gameId === correctId;
