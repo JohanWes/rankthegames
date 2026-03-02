@@ -51,6 +51,7 @@ type SubmittedRound = {
 type MutableGameState = {
   id: ObjectId;
   currentScore: number;
+  totalMatches: number;
 };
 
 type GameAggregate = {
@@ -119,7 +120,7 @@ export async function completeRunSubmission(
             },
             {
               session,
-              projection: { _id: 1, currentScore: 1 }
+              projection: { _id: 1, currentScore: 1, totalMatches: 1 }
             }
           )
           .toArray();
@@ -133,7 +134,8 @@ export async function completeRunSubmission(
             game._id.toHexString(),
             {
               id: game._id,
-              currentScore: game.currentScore
+              currentScore: game.currentScore,
+              totalMatches: game.totalMatches
             } satisfies MutableGameState
           ])
         );
@@ -152,67 +154,16 @@ export async function completeRunSubmission(
 
           const leftPreScore = leftState.currentScore;
           const rightPreScore = rightState.currentScore;
-          const isTie = leftPreScore === rightPreScore;
 
-          if (isTie) {
-            const tieDelta = 3;
-            const pickedLeft = round.pickedGameId === round.leftGameId;
-
-            const leftDelta = pickedLeft ? tieDelta : -tieDelta;
-            const rightDelta = pickedLeft ? -tieDelta : tieDelta;
-
-            leftState.currentScore = leftPreScore + leftDelta;
-            rightState.currentScore = rightPreScore + rightDelta;
-
-            bumpAggregate(aggregatesById, round.leftGameId, leftState.currentScore, {
-              wins: pickedLeft ? 1 : 0,
-              losses: pickedLeft ? 0 : 1,
-              totalMatches: 1,
-              totalAppearances: 1
-            });
-            bumpAggregate(aggregatesById, round.rightGameId, rightState.currentScore, {
-              wins: pickedLeft ? 0 : 1,
-              losses: pickedLeft ? 1 : 0,
-              totalMatches: 1,
-              totalAppearances: 1
-            });
-
-            if (round.wasCorrect) {
-              finalScore += 1;
-            }
-
-            matchEvents.push({
-              _id: new ObjectId(),
-              runId: input.runId,
-              round: round.round,
-              snapshotVersion: tokenPayload.snapshotVersion,
-              leftGameId: leftState.id,
-              rightGameId: rightState.id,
-              pickedGameId: toObjectId(round.pickedGameId, "pickedGameId"),
-              correctGameId: toObjectId(round.correctGameId, "correctGameId"),
-              snapshotLeftScore: round.snapshotLeftScore,
-              snapshotRightScore: round.snapshotRightScore,
-              appliedLeftPreScore: leftPreScore,
-              appliedRightPreScore: rightPreScore,
-              appliedLeftPostScore: leftState.currentScore,
-              appliedRightPostScore: rightState.currentScore,
-              leftDelta,
-              rightDelta,
-              wasCorrect: round.wasCorrect,
-              bucket: round.bucket,
-              ipHash,
-              submittedAt
-            });
-            continue;
-          }
-
-          const delta = getRatingDelta(
-            round.leftGameId,
-            leftPreScore,
-            round.rightGameId,
-            rightPreScore,
-            round.pickedGameId
-          );
+          const delta = getRatingDelta({
+            leftGameId: round.leftGameId,
+            leftScore: leftPreScore,
+            rightGameId: round.rightGameId,
+            rightScore: rightPreScore,
+            pickedGameId: round.pickedGameId,
+            leftTotalMatches: leftState.totalMatches,
+            rightTotalMatches: rightState.totalMatches,
+          });
           const pickedLeft = round.pickedGameId === round.leftGameId;
           const winnerPreScore = pickedLeft ? leftPreScore : rightPreScore;
           const loserPreScore = pickedLeft ? rightPreScore : leftPreScore;
@@ -225,6 +176,8 @@ export async function completeRunSubmission(
 
           leftState.currentScore = appliedLeftPostScore;
           rightState.currentScore = appliedRightPostScore;
+          leftState.totalMatches += 1;
+          rightState.totalMatches += 1;
 
           bumpAggregate(aggregatesById, round.leftGameId, appliedLeftPostScore, {
             wins: pickedLeft ? 1 : 0,
