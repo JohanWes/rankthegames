@@ -1,8 +1,11 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { LandingRunPrefetch } from "@/components/LandingRunPrefetch";
+import { DemoCards } from "@/components/DemoCards";
+import type { DemoPhase } from "@/components/DemoCards";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -30,79 +33,103 @@ const itemVariants = {
 };
 
 export default function LandingPage() {
+  const [demoPhase, setDemoPhase] = useState<DemoPhase>("idle");
+  const handlePhaseChange = useCallback((phase: DemoPhase) => {
+    setDemoPhase(phase);
+  }, []);
+
+  const isWinner = demoPhase === "winner";
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-6">
+    <main className="flex min-h-screen flex-col items-center justify-center px-6 py-12">
       <LandingRunPrefetch />
       <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="relative w-full max-w-2xl"
+        className="flex w-full max-w-5xl flex-col items-center gap-6 md:gap-8"
       >
-        {/* Decorative accent lines */}
-        <motion.div
-          variants={itemVariants}
-          className="absolute -left-8 top-1/2 h-px w-24 bg-gradient-to-r from-transparent via-accent/60 to-transparent hidden lg:block"
-          style={{ transform: 'translateY(-50%)' }}
-        />
-        <motion.div
-          variants={itemVariants}
-          className="absolute -right-8 top-1/2 h-px w-24 bg-gradient-to-l from-transparent via-accent/60 to-transparent hidden lg:block"
-          style={{ transform: 'translateY(-50%)' }}
-        />
+        {/* Title */}
+        <motion.div variants={itemVariants} className="text-center">
+          <h1 className="font-display text-5xl font-bold leading-none tracking-tight sm:text-6xl lg:text-7xl">
+            <span className="text-text-primary glow-accent-text">
+              RANK THE{" "}
+            </span>
+            <span className="text-accent">GAMES</span>
+          </h1>
+          <p className="mt-3 text-sm text-text-secondary sm:text-base">
+            Which game is more popular?
+          </p>
+        </motion.div>
 
-        {/* Glass card */}
+        {/* Micro-demo */}
+        <motion.div variants={itemVariants} aria-hidden="true">
+          <DemoCards onPhaseChange={handlePhaseChange} />
+        </motion.div>
+
+        {/* Bouncing chevron arrow */}
         <motion.div
           variants={itemVariants}
-          className="glass relative overflow-hidden rounded-3xl border border-white/8 px-8 py-16 md:px-16 md:py-20"
+          aria-hidden="true"
+          className="-my-2"
         >
-          {/* Subtle inner glow */}
-          <div className="absolute -inset-px rounded-3xl bg-gradient-to-br from-accent/5 to-transparent opacity-50" />
-          
-          <div className="relative text-center">
-            {/* Title */}
-            <motion.h1
-              variants={itemVariants}
-              className="font-display text-6xl font-bold leading-none tracking-tight sm:text-7xl lg:text-8xl"
+          <motion.svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            animate={{
+              y: isWinner ? [0, 6, 0] : 0,
+              opacity: isWinner ? 1 : 0.3,
+            }}
+            transition={{
+              y: {
+                duration: 0.6,
+                ease: "easeInOut",
+                repeat: isWinner ? 1 : 0,
+              },
+              opacity: { duration: 0.3 },
+            }}
+            className="text-accent"
+          >
+            <path
+              d="M6 9L12 15L18 9"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </motion.svg>
+        </motion.div>
+
+        {/* CTA section */}
+        <motion.div
+          variants={itemVariants}
+          className="flex flex-col items-center gap-6"
+        >
+          <motion.div
+            animate={{
+              scale: isWinner ? 1.08 : 1,
+            }}
+            transition={{ type: "spring", stiffness: 300, damping: 18 }}
+          >
+            <Link
+              href="/game"
+              className="group relative inline-flex items-center justify-center overflow-hidden rounded-full border border-accent/60 bg-accent/10 px-12 py-4 font-display text-2xl font-bold tracking-wide text-accent transition-all duration-300 hover:bg-accent/20 hover:border-accent sm:text-3xl"
             >
-              <span className="text-text-primary glow-accent-text">
-                RANK THE
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="absolute h-full w-full animate-pulse-glow rounded-full bg-accent/20" />
               </span>
-              <br />
-              <span className="text-accent">GAMES</span>
-            </motion.h1>
+              <span className="relative z-10">PICK THE WINNER</span>
+            </Link>
+          </motion.div>
 
-            {/* Subtitle */}
-            <motion.p
-              variants={itemVariants}
-              className="mt-6 text-base text-text-secondary sm:text-lg"
-            >
-              Which game is more popular?
-            </motion.p>
-
-            {/* Play button */}
-            <motion.div variants={itemVariants} className="mt-10">
-              <Link
-                href="/game"
-                className="group relative inline-flex items-center justify-center overflow-hidden rounded-full border border-accent/60 bg-accent/10 px-10 py-4 font-display text-2xl font-bold text-accent transition-all duration-300 hover:bg-accent/20 hover:border-accent"
-              >
-                <span className="absolute inset-0 flex items-center justify-center">
-                  <span className="absolute h-full w-full animate-pulse-glow rounded-full bg-accent/20" />
-                </span>
-                <span className="relative z-10">PLAY</span>
-              </Link>
-            </motion.div>
-
-            {/* Leaderboard link */}
-            <motion.div variants={itemVariants} className="mt-8">
-              <Link
-                href="/leaderboard"
-                className="text-sm text-text-secondary underline underline-offset-4 transition-colors hover:text-accent"
-              >
-                View Leaderboard
-              </Link>
-            </motion.div>
-          </div>
+          <Link
+            href="/leaderboard"
+            className="text-sm text-text-secondary underline underline-offset-4 transition-colors hover:text-accent"
+          >
+            View Leaderboard
+          </Link>
         </motion.div>
       </motion.div>
     </main>
