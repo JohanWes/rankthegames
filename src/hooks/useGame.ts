@@ -13,7 +13,7 @@ import { consumeWarmRun } from "@/lib/run-prefetch";
 const MAX_ROUNDS = 20;
 const REVEAL_DELAY_MS = 900;
 const TRANSITION_DELAY_MS = 1100;
-const SWAP_DELAY_MS = 500;
+const SWAP_DELAY_MS = 250;
 const HIGH_SCORE_KEY = "rankthegames_highscore";
 
 // ---------------------------------------------------------------------------

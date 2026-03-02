@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useGame } from "@/hooks/useGame";
 import { useBeaconSubmit } from "@/hooks/useBeaconSubmit";
 import { usePreloadImages } from "@/hooks/usePreloadImages";
@@ -175,26 +176,46 @@ export default function GamePage() {
             }
           >
             <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
-              <GameCard
-                game={game.leftGame}
-                position="left"
-                state={getCardState(game.phase, pickedId, game.leftGame.id, correctId)}
-                onSelect={() => game.selectGame(game.leftGame!.id)}
-                disabled={game.phase !== "AWAITING_CHOICE"}
-                showScore={showScores}
-                priority={game.currentRound === 1}
-              />
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={game.leftGame.id}
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                >
+                  <GameCard
+                    game={game.leftGame}
+                    position="left"
+                    state={getCardState(game.phase, pickedId, game.leftGame.id, correctId)}
+                    onSelect={() => game.selectGame(game.leftGame!.id)}
+                    disabled={game.phase !== "AWAITING_CHOICE"}
+                    showScore={showScores}
+                    priority={game.currentRound === 1}
+                  />
+                </motion.div>
+              </AnimatePresence>
             </div>
             <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
-              <GameCard
-                game={game.rightGame}
-                position="right"
-                state={getCardState(game.phase, pickedId, game.rightGame.id, correctId)}
-                onSelect={() => game.selectGame(game.rightGame!.id)}
-                disabled={game.phase !== "AWAITING_CHOICE"}
-                showScore={showScores}
-                priority={game.currentRound === 1}
-              />
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={game.rightGame.id}
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                >
+                  <GameCard
+                    game={game.rightGame}
+                    position="right"
+                    state={getCardState(game.phase, pickedId, game.rightGame.id, correctId)}
+                    onSelect={() => game.selectGame(game.rightGame!.id)}
+                    disabled={game.phase !== "AWAITING_CHOICE"}
+                    showScore={showScores}
+                    priority={game.currentRound === 1}
+                  />
+                </motion.div>
+              </AnimatePresence>
             </div>
           </MobileCarousel>
         )}
