@@ -176,7 +176,7 @@ export default function GamePage() {
             }
           >
             <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
-              <AnimatePresence mode="wait" initial={false}>
+              <AnimatePresence mode="wait">
                 <motion.div
                   key={game.leftGame.id}
                   initial={{ opacity: 0, scale: 0.97 }}
@@ -197,7 +197,7 @@ export default function GamePage() {
               </AnimatePresence>
             </div>
             <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
-              <AnimatePresence mode="wait" initial={false}>
+              <AnimatePresence mode="wait">
                 <motion.div
                   key={game.rightGame.id}
                   initial={{ opacity: 0, scale: 0.97 }}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { motion, useSpring, useTransform } from "framer-motion";
 import type { RunGame } from "@/lib/types";
@@ -140,6 +140,7 @@ export function GameCard({
   isHigher = false,
   priority = false,
 }: GameCardProps) {
+  const [imageLoaded, setImageLoaded] = useState(false);
   const canClick = !disabled && state === "idle" && !!onSelect;
   const showResult = state === "correct" || state === "incorrect";
 
@@ -170,9 +171,11 @@ export function GameCard({
             src={game.imageUrl}
             alt={game.name}
             fill
-            className="object-cover"
+            className="object-cover transition-opacity duration-300 ease-out"
+            style={{ opacity: imageLoaded ? 1 : 0 }}
             sizes="(max-width: 768px) 50vw, 40vw"
             priority={priority}
+            onLoad={() => setImageLoaded(true)}
           />
         ) : (
           /* Gradient fallback with gamepad icon */
