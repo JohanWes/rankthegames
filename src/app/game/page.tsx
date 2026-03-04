@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useGame } from "@/hooks/useGame";
 import { useBeaconSubmit } from "@/hooks/useBeaconSubmit";
-import { usePreloadImages } from "@/hooks/usePreloadImages";
 import { warmRunPrefetch } from "@/lib/run-prefetch";
 import { GameCard, type GameCardState } from "@/components/GameCard";
 import { VsBanner } from "@/components/VsBanner";
@@ -63,7 +62,6 @@ function getCorrectId(leftGame: RunGame | null, rightGame: RunGame | null): stri
 export default function GamePage() {
   const game = useGame();
   const { submitRun, setRunParams, resetSubmission } = useBeaconSubmit();
-  usePreloadImages(game.currentRound, game.challengerQueue, game.games);
 
   const submittedForRunRef = useRef<string | null>(null);
 

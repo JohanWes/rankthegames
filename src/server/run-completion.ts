@@ -36,6 +36,12 @@ export type CompleteRunResponse = {
   ratingVersion: string;
 };
 
+export type CompleteRunSubmissionMetrics = {
+  transactionMs: number;
+  touchedGameCount: number;
+  submittedRoundCount: number;
+};
+
 type SubmittedRound = {
   round: number;
   bucket: string;
@@ -95,6 +101,17 @@ export async function completeRunSubmission(
   input: CompleteRunRequest,
   ipHash: string
 ): Promise<CompleteRunResponse> {
+  const { response } = await completeRunSubmissionWithMetrics(input, ipHash);
+  return response;
+}
+
+export async function completeRunSubmissionWithMetrics(
+  input: CompleteRunRequest,
+  ipHash: string
+): Promise<{
+  response: CompleteRunResponse;
+  metrics: CompleteRunSubmissionMetrics;
+}> {
   const tokenPayload = await verifySignedRunToken(input.signedRunToken);
 
   if (tokenPayload.runId !== input.runId) {
@@ -105,8 +122,12 @@ export async function completeRunSubmission(
 
   const submittedAt = new Date();
   const ratingVersion = submittedAt.toISOString();
+  const touchedGameCount = new Set(
+    submittedRounds.flatMap((round) => [round.leftGameId, round.rightGameId])
+  ).size;
 
   try {
+    const transactionStartedAt = performance.now();
     const transactionResult = await withMongoSession(async (session, db) =>
       session.withTransaction(async () => {
         const collections = getCollections(db);
@@ -273,7 +294,14 @@ export async function completeRunSubmission(
       throw new Error("Run completion transaction did not produce a result.");
     }
 
-    return transactionResult;
+    return {
+      response: transactionResult,
+      metrics: {
+        transactionMs: Math.round(performance.now() - transactionStartedAt),
+        touchedGameCount,
+        submittedRoundCount: submittedRounds.length
+      }
+    };
   } catch (error) {
     if (error instanceof MongoServerError && error.code === 11000) {
       throw new DuplicateRunSubmissionError();
@@ -282,7 +310,6 @@ export async function completeRunSubmission(
     throw error;
   }
 }
-
 
 function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenPayload): SubmittedRound[] {
   const selections = [...input.selections].sort((left, right) => left.round - right.round);

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getGamesCollection } from "./collections.ts";
 
-const LADDER_SNAPSHOT_TTL_MS = 30_000;
+const LADDER_SNAPSHOT_TTL_MS = 180_000;
 export const MAX_RUN_ROUNDS = 20;
 const SELECTION_POOL_SIZE = 20;
 const OUTLIER_MIN_SCORE_GAP = 125;
@@ -156,12 +156,51 @@ export type BuiltRunDefinition = {
   gameIds: string[];
 };
 
+export type LadderSnapshotMetrics = {
+  cacheStatus: "hit" | "miss" | "shared";
+  dbFetchMs: number;
+  totalMs: number;
+  gameCount: number;
+};
+
+export type CreateRunDefinitionMetrics = {
+  snapshot: LadderSnapshotMetrics;
+  buildRunMs: number;
+  totalMs: number;
+};
+
+type LadderSnapshotBuildResult = {
+  snapshot: LadderSnapshot;
+  dbFetchMs: number;
+  gameCount: number;
+};
+
 let cachedLadderSnapshot: LadderSnapshot | null = null;
-let ladderSnapshotPromise: Promise<LadderSnapshot> | null = null;
+let ladderSnapshotPromise: Promise<LadderSnapshotBuildResult> | null = null;
 
 export async function createRunDefinition(): Promise<BuiltRunDefinition> {
-  const snapshot = await getLadderSnapshot();
-  return buildRunDefinition(snapshot);
+  const { runDefinition } = await createRunDefinitionWithMetrics();
+  return runDefinition;
+}
+
+export async function createRunDefinitionWithMetrics(): Promise<{
+  runDefinition: BuiltRunDefinition;
+  metrics: CreateRunDefinitionMetrics;
+}> {
+  const startedAt = performance.now();
+  const { snapshot, metrics: snapshotMetrics } = await getLadderSnapshotWithMetrics();
+  const buildStartedAt = performance.now();
+  const runDefinition = buildRunDefinition(snapshot);
+  const buildRunMs = Math.round(performance.now() - buildStartedAt);
+
+  return {
+    runDefinition,
+    metrics: {
+      snapshot: snapshotMetrics,
+      buildRunMs,
+      totalMs: Math.round(performance.now() - startedAt)
+    }
+  };
 }
 
 export function getRoundBucketLabel(round: number, challengerQueue?: Array<{ round: number; bucket: string }>) {
@@ -179,9 +218,29 @@ export function getRoundBucketLabel(round: number, challengerQueue?: Array<{ rou
 }
 
 export async function getLadderSnapshot(now = Date.now()): Promise<LadderSnapshot> {
+  const { snapshot } = await getLadderSnapshotWithMetrics(now);
+  return snapshot;
+}
+
+async function getLadderSnapshotWithMetrics(now = Date.now()): Promise<{
+  snapshot: LadderSnapshot;
+  metrics: LadderSnapshotMetrics;
+}> {
+  const startedAt = performance.now();
+
   if (cachedLadderSnapshot && cachedLadderSnapshot.expiresAt > now) {
-    return cachedLadderSnapshot;
+    return {
+      snapshot: cachedLadderSnapshot,
+      metrics: {
+        cacheStatus: "hit",
+        dbFetchMs: 0,
+        totalMs: Math.round(performance.now() - startedAt),
+        gameCount: cachedLadderSnapshot.games.length
+      }
+    };
   }
+
+  const cacheStatus = ladderSnapshotPromise ? "shared" : "miss";
 
   if (!ladderSnapshotPromise) {
     ladderSnapshotPromise = buildLadderSnapshot(now).finally(() => {
@@ -189,16 +248,24 @@ export async function getLadderSnapshot(now = Date.now()): Promise<LadderSnapsho
     });
   }
 
-  const snapshot = await ladderSnapshotPromise;
+  const result = await ladderSnapshotPromise;
 
   if (!cachedLadderSnapshot || cachedLadderSnapshot.expiresAt <= now) {
-    cachedLadderSnapshot = snapshot;
+    cachedLadderSnapshot = result.snapshot;
   }
 
-  return snapshot;
+  return {
+    snapshot: result.snapshot,
+    metrics: {
+      cacheStatus,
+      dbFetchMs: result.dbFetchMs,
+      totalMs: Math.round(performance.now() - startedAt),
+      gameCount: result.gameCount
+    }
+  };
 }
 
-async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshot> {
+async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshotBuildResult> {
   const games = await getGamesCollection();
   const builtAt = new Date(nowMs);
   let sourceGames: Array<{
@@ -215,6 +282,7 @@ async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshot> {
   }>;
 
   try {
+    const dbFetchStartedAt = performance.now();
     sourceGames = await games
       .find<{
         _id: { toString(): string };
@@ -244,6 +312,37 @@ async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshot> {
       )
       .sort({ currentScore: -1, _id: 1 })
       .toArray();
+    const dbFetchMs = Math.round(performance.now() - dbFetchStartedAt);
+
+    if (sourceGames.length < 2) {
+      console.error("Insufficient games available to create a run.", {
+        gameCount: sourceGames.length
+      });
+      throw new Error("At least two games are required to create a run.");
+    }
+
+    const snapshotGames = sourceGames.map((game, index) => ({
+      id: game._id.toString(),
+      name: game.name,
+      year: game.year ?? null,
+      seedRank: game.seedRank,
+      snapshotScore: game.currentScore,
+      totalAppearances: game.totalAppearances,
+      imageUrl: game.cover?.imageUrl ?? null,
+      thumbUrl: game.cover?.thumbUrl ?? null,
+      percentileFromBottom: getPercentileFromBottom(index, sourceGames.length)
+    }));
+
+    return {
+      snapshot: {
+        snapshotVersion: builtAt.toISOString(),
+        builtAt,
+        expiresAt: nowMs + LADDER_SNAPSHOT_TTL_MS,
+        games: snapshotGames
+      },
+      dbFetchMs,
+      gameCount: snapshotGames.length
+    };
   } catch (error) {
     console.error("Failed to load games for ladder snapshot.", {
       message: error instanceof Error ? error.message : String(error),
@@ -251,32 +350,6 @@ async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshot> {
     });
     throw error;
   }
-
-  if (sourceGames.length < 2) {
-    console.error("Insufficient games available to create a run.", {
-      gameCount: sourceGames.length
-    });
-    throw new Error("At least two games are required to create a run.");
-  }
-
-  const snapshotGames = sourceGames.map((game, index) => ({
-    id: game._id.toString(),
-    name: game.name,
-    year: game.year ?? null,
-    seedRank: game.seedRank,
-    snapshotScore: game.currentScore,
-    totalAppearances: game.totalAppearances,
-    imageUrl: game.cover?.imageUrl ?? null,
-    thumbUrl: game.cover?.thumbUrl ?? null,
-    percentileFromBottom: getPercentileFromBottom(index, sourceGames.length)
-  }));
-
-  return {
-    snapshotVersion: builtAt.toISOString(),
-    builtAt,
-    expiresAt: nowMs + LADDER_SNAPSHOT_TTL_MS,
-    games: snapshotGames
-  };
 }
 
 export function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition {

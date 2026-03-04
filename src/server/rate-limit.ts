@@ -1,5 +1,5 @@
 import { MongoServerError } from "mongodb";
-import { ensureCoreIndexes, getAppCollections } from "./collections.ts";
+import { getAppCollections } from "./collections.ts";
 
 export type RateLimitPolicy = {
   limit: number;
@@ -54,7 +54,6 @@ export async function enforceRateLimit(
   }
 
   const collections = await getAppCollections();
-  await ensureCoreIndexes();
 
   const result = await consumeRateLimitRecord(
     {

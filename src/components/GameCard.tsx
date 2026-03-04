@@ -143,6 +143,9 @@ export function GameCard({
   const [imageLoaded, setImageLoaded] = useState(false);
   const canClick = !disabled && state === "idle" && !!onSelect;
   const showResult = state === "correct" || state === "incorrect";
+  const posterUrl =
+    game.thumbUrl && game.thumbUrl !== game.imageUrl ? game.thumbUrl : null;
+  const imageSizes = "(max-width: 768px) 50vw, (max-width: 1280px) 440px, 520px";
 
   return (
     <div>
@@ -166,17 +169,31 @@ export function GameCard({
         `}
       >
         {/* Cover image */}
-        {game.imageUrl ? (
-          <Image
-            src={game.imageUrl}
-            alt={game.name}
-            fill
-            className="object-cover transition-opacity duration-300 ease-out"
-            style={{ opacity: imageLoaded ? 1 : 0 }}
-            sizes="(max-width: 768px) 50vw, 40vw"
-            priority={priority}
-            onLoad={() => setImageLoaded(true)}
-          />
+        {game.imageUrl || posterUrl ? (
+          <>
+            {posterUrl ? (
+              <Image
+                src={posterUrl}
+                alt=""
+                aria-hidden="true"
+                fill
+                className="object-cover scale-[1.02]"
+                sizes={imageSizes}
+              />
+            ) : null}
+            {game.imageUrl ? (
+              <Image
+                src={game.imageUrl}
+                alt={game.name}
+                fill
+                className="object-cover transition-opacity duration-300 ease-out"
+                style={{ opacity: imageLoaded || !posterUrl ? 1 : 0 }}
+                sizes={imageSizes}
+                priority={priority}
+                onLoad={() => setImageLoaded(true)}
+              />
+            ) : null}
+          </>
         ) : (
           /* Gradient fallback with gamepad icon */
           <div

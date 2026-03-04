@@ -2,7 +2,7 @@ import { ZodError } from "zod";
 import { RateLimitExceededError } from "@/server/rate-limit.ts";
 import {
   completeRunRequestSchema,
-  completeRunSubmission,
+  completeRunSubmissionWithMetrics,
   DuplicateRunSubmissionError,
   RunCompletionValidationError,
   RunTokenValidationError
@@ -20,13 +20,33 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const headers = createNoStoreHeaders();
+  const requestStartedAt = performance.now();
 
   try {
+    const parseStartedAt = performance.now();
     const body = await parseRequestBody(request);
+    const parseBodyMs = Math.round(performance.now() - parseStartedAt);
+    const rateLimitStartedAt = performance.now();
     const rateLimit = await enforceRequestRateLimit(request, "/api/runs/complete");
+    const rateLimitMs = Math.round(performance.now() - rateLimitStartedAt);
     applyRateLimitHeaders(headers, rateLimit);
 
-    const response = await completeRunSubmission(body, getRequestIpHash(request) ?? "ip:unknown");
+    const completionStartedAt = performance.now();
+    const { response, metrics } = await completeRunSubmissionWithMetrics(
+      body,
+      getRequestIpHash(request) ?? "ip:unknown"
+    );
+    const completeRunMs = Math.round(performance.now() - completionStartedAt);
+
+    console.info("Completed run.", {
+      parseBodyMs,
+      rateLimitMs,
+      completeRunMs,
+      transactionMs: metrics.transactionMs,
+      touchedGameCount: metrics.touchedGameCount,
+      submittedRoundCount: metrics.submittedRoundCount,
+      totalMs: Math.round(performance.now() - requestStartedAt)
+    });
 
     return createJsonResponse(response, {
       status: 200,

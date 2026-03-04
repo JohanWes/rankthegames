@@ -151,8 +151,6 @@ async function createCoreIndexes(db: Db) {
     collections.games.createIndex({ currentScore: -1, _id: 1 }),
     collections.games.createIndex({ seedRank: 1 }),
     collections.games.createIndex({ "cover.status": 1 }),
-    collections.games.createIndex({ totalMatches: 1 }),
-    collections.games.createIndex({ totalAppearances: 1 }),
     collections.matchEvents.createIndex({ runId: 1, round: 1 }, { unique: true }),
     collections.matchEvents.createIndex({ submittedAt: -1 }),
     collections.matchEvents.createIndex({ ipHash: 1, submittedAt: -1 }),

@@ -1,6 +1,6 @@
 import { issueRunToken } from "@/server/run-token.ts";
 import { RateLimitExceededError } from "@/server/rate-limit.ts";
-import { createRunDefinition } from "@/server/run-builder.ts";
+import { createRunDefinitionWithMetrics } from "@/server/run-builder.ts";
 import {
   applyRateLimitHeaders,
   createErrorResponse,
@@ -13,15 +13,20 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const headers = createNoStoreHeaders();
+  const requestStartedAt = performance.now();
   let stage = "rate_limit";
+  let rateLimitMs = 0;
 
   try {
+    const rateLimitStartedAt = performance.now();
     const rateLimit = await enforceRequestRateLimit(request, "/api/runs");
+    rateLimitMs = Math.round(performance.now() - rateLimitStartedAt);
     applyRateLimitHeaders(headers, rateLimit);
 
     stage = "build_run";
-    const runDefinition = await createRunDefinition();
+    const { runDefinition, metrics } = await createRunDefinitionWithMetrics();
     stage = "issue_token";
+    const tokenStartedAt = performance.now();
     const token = await issueRunToken({
       runId: runDefinition.runId,
       snapshotVersion: runDefinition.snapshotVersion,
@@ -29,6 +34,18 @@ export async function POST(request: Request) {
       challengerQueue: runDefinition.challengerQueue,
       snapshotScores: runDefinition.snapshotScores,
       gameIds: runDefinition.gameIds
+    });
+    const tokenIssueMs = Math.round(performance.now() - tokenStartedAt);
+
+    console.info("Created run.", {
+      rateLimitMs,
+      snapshotCacheStatus: metrics.snapshot.cacheStatus,
+      snapshotDbFetchMs: metrics.snapshot.dbFetchMs,
+      snapshotMs: metrics.snapshot.totalMs,
+      snapshotGameCount: metrics.snapshot.gameCount,
+      runBuildMs: metrics.buildRunMs,
+      tokenIssueMs,
+      totalMs: Math.round(performance.now() - requestStartedAt)
     });
 
     return createJsonResponse(
