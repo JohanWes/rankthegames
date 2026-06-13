@@ -8,7 +8,7 @@ import {
   type RunSubmissionDoc
 } from "./collections.ts";
 import { applyRatingDelta, getRatingDelta } from "./rating.ts";
-import { getRoundBucketLabel, MAX_RUN_ROUNDS } from "./run-builder.ts";
+import { MAX_RUN_ROUNDS } from "./run-builder.ts";
 import { verifyRunToken, type RunTokenPayload } from "./run-token.ts";
 
 const endedReasonSchema = z.enum(["wrong_guess", "max_rounds", "abandoned"]);
@@ -334,13 +334,12 @@ function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenP
     );
   }
 
-  let currentLeftGameId = tokenPayload.initialPair.leftGameId;
-  let currentRightGameId = tokenPayload.initialPair.rightGameId;
   const submittedRounds: SubmittedRound[] = [];
 
   for (let index = 0; index < selections.length; index += 1) {
     const selection = selections[index];
     const expectedRound = index + 1;
+    const issuedPair = tokenPayload.roundPairs.find((pair) => pair.round === selection.round);
 
     if (selection.round !== expectedRound) {
       throw new RunCompletionValidationError(
@@ -349,9 +348,16 @@ function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenP
       );
     }
 
+    if (!issuedPair) {
+      throw new RunTokenValidationError(
+        "invalid_run_token",
+        `Issued run token is missing the pair for round ${selection.round}.`
+      );
+    }
+
     if (
-      selection.pickedGameId !== currentLeftGameId &&
-      selection.pickedGameId !== currentRightGameId
+      selection.pickedGameId !== issuedPair.leftGameId &&
+      selection.pickedGameId !== issuedPair.rightGameId
     ) {
       throw new RunCompletionValidationError(
         "invalid_picked_game",
@@ -361,8 +367,8 @@ function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenP
 
     if (
       !tokenPayload.gameIds.includes(selection.pickedGameId) ||
-      !tokenPayload.gameIds.includes(currentLeftGameId) ||
-      !tokenPayload.gameIds.includes(currentRightGameId)
+      !tokenPayload.gameIds.includes(issuedPair.leftGameId) ||
+      !tokenPayload.gameIds.includes(issuedPair.rightGameId)
     ) {
       throw new RunCompletionValidationError(
         "unknown_game_id",
@@ -370,42 +376,26 @@ function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenP
       );
     }
 
-    const snapshotLeftScore = getSnapshotScore(tokenPayload, currentLeftGameId);
-    const snapshotRightScore = getSnapshotScore(tokenPayload, currentRightGameId);
+    const snapshotLeftScore = getSnapshotScore(tokenPayload, issuedPair.leftGameId);
+    const snapshotRightScore = getSnapshotScore(tokenPayload, issuedPair.rightGameId);
     const isTie = snapshotLeftScore === snapshotRightScore;
     const correctGameId = isTie
       ? null
       : snapshotLeftScore > snapshotRightScore
-        ? currentLeftGameId
-        : currentRightGameId;
+        ? issuedPair.leftGameId
+        : issuedPair.rightGameId;
 
     submittedRounds.push({
       round: selection.round,
-      bucket: getRoundBucketLabel(selection.round, tokenPayload.challengerQueue),
-      leftGameId: currentLeftGameId,
-      rightGameId: currentRightGameId,
+      bucket: issuedPair.bucket,
+      leftGameId: issuedPair.leftGameId,
+      rightGameId: issuedPair.rightGameId,
       pickedGameId: selection.pickedGameId,
-      correctGameId: isTie ? currentLeftGameId : correctGameId!,
+      correctGameId: isTie ? issuedPair.leftGameId : correctGameId!,
       snapshotLeftScore,
       snapshotRightScore,
       wasCorrect: isTie || selection.pickedGameId === correctGameId
     });
-
-    if (selection.round < selections.length) {
-      const nextChallenger = tokenPayload.challengerQueue.find(
-        (challenger) => challenger.round === selection.round + 1
-      );
-
-      if (!nextChallenger) {
-        throw new RunTokenValidationError(
-          "invalid_run_token",
-          `Issued run token is missing the challenger for round ${selection.round + 1}.`
-        );
-      }
-
-      currentLeftGameId = selection.pickedGameId;
-      currentRightGameId = nextChallenger.gameId;
-    }
   }
 
   validateRoundTermination(input.endedReason, submittedRounds);

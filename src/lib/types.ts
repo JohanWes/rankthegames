@@ -16,6 +16,14 @@ export type RunChallenger = {
   bucket: string;
 };
 
+/** Fixed pair issued for a playable run round. */
+export type RunPair = {
+  round: number;
+  leftGameId: string;
+  rightGameId: string;
+  bucket: string;
+};
+
 /** Response body from POST /api/runs. */
 export type CreateRunResponse = {
   runId: string;
@@ -28,6 +36,7 @@ export type CreateRunResponse = {
     rightGameId: string;
   };
   challengerQueue: RunChallenger[];
+  roundPairs: RunPair[];
   games: Record<string, RunGame>;
   signedRunToken: string;
 };

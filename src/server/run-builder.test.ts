@@ -14,7 +14,6 @@ vi.mock("../lib/env", () => ({
 
 import {
   buildRunDefinition,
-  getRoundBucketLabel,
   getScoreBasedParams,
   MAX_RUN_ROUNDS,
   RUN_BAND_MODEL,
@@ -72,16 +71,28 @@ function createHighTierSnapshot(): LadderSnapshot {
   };
 }
 
-function parseCoreBucket(bucket: string) {
-  const match = /^cluster:(\d+)-(\d+)$/.exec(bucket);
-
-  if (!match) {
-    throw new Error(`Expected a core cluster bucket, received ${bucket}.`);
-  }
+function createLargeSnapshot(): LadderSnapshot {
+  const totalGames = 800;
+  const games = Array.from({ length: totalGames }, (_, index) => {
+    const seedRank = index + 1;
+    return {
+      id: `l${seedRank}`,
+      name: `Large Game ${seedRank}`,
+      year: 2000 + (index % 24),
+      seedRank,
+      snapshotScore: 1000 - index,
+      totalAppearances: seedRank > 650 ? 0 : index % 8,
+      imageUrl: null,
+      thumbUrl: null,
+      percentileFromBottom: Number((((totalGames - index) / totalGames) * 100).toFixed(3))
+    };
+  });
 
   return {
-    minScore: Number(match[1]),
-    maxScore: Number(match[2])
+    snapshotVersion: "2026-02-28T00:00:00.000Z",
+    builtAt: new Date("2026-02-28T00:00:00.000Z"),
+    expiresAt: Date.now() + 30_000,
+    games
   };
 }
 
@@ -132,55 +143,89 @@ describe("buildRunDefinition", () => {
     vi.restoreAllMocks();
   });
 
-  it("builds runs around one score cluster with at most two controlled outliers", () => {
+  it("builds a fixed 20-pair run schedule", () => {
     vi.spyOn(Math, "random").mockImplementation(() => 0);
 
     const run = buildRunDefinition(createSnapshot());
-    const firstCoreChallenger = run.challengerQueue.find((entry) => entry.bucket.startsWith("cluster:"));
 
     expect(run.bandModel).toBe(RUN_BAND_MODEL);
-    expect(run.gameIds).toHaveLength(MAX_RUN_ROUNDS + 1);
-    expect(new Set(run.gameIds).size).toBe(MAX_RUN_ROUNDS + 1);
-    expect(firstCoreChallenger).toBeDefined();
+    expect(run.roundPairs).toHaveLength(MAX_RUN_ROUNDS);
+    expect(run.initialPair).toEqual({
+      leftGameId: run.roundPairs[0].leftGameId,
+      rightGameId: run.roundPairs[0].rightGameId
+    });
+    expect(new Set(run.gameIds).size).toBe(run.gameIds.length);
 
-    const coreWindow = parseCoreBucket(firstCoreChallenger!.bucket);
-    const scores = run.gameIds.map((gameId) => run.games[gameId].snapshotScore);
-    const coreScores = scores.filter(
-      (score) => score >= coreWindow.minScore && score <= coreWindow.maxScore
-    );
-    const outlierBuckets = run.challengerQueue.filter((entry) => entry.bucket.startsWith("outlier:"));
-
-    expect(coreScores.length).toBeGreaterThanOrEqual(19);
-    expect(outlierBuckets.length).toBeLessThanOrEqual(2);
-
-    for (const outlier of outlierBuckets) {
-      const gap = Number(outlier.bucket.replace("outlier:", ""));
-      expect(Math.abs(gap)).toBeGreaterThanOrEqual(125);
-      expect(Math.abs(gap)).toBeLessThanOrEqual(500);
+    for (const pair of run.roundPairs) {
+      expect(pair.leftGameId).not.toBe(pair.rightGameId);
+      expect(run.gameIds).toContain(pair.leftGameId);
+      expect(run.gameIds).toContain(pair.rightGameId);
     }
   });
 
-  it("keeps the opening pair within score-based gap bounds", () => {
+  it("keeps warmup rounds recognizable and reasonably gapped", () => {
     vi.spyOn(Math, "random").mockImplementation(() => 0);
 
-    const run = buildRunDefinition(createSnapshot());
-    const leftScore = run.games[run.initialPair.leftGameId].snapshotScore;
-    const rightScore = run.games[run.initialPair.rightGameId].snapshotScore;
-    const gap = Math.abs(leftScore - rightScore);
+    const snapshot = createLargeSnapshot();
+    const run = buildRunDefinition(snapshot);
+    const gamesById = new Map(snapshot.games.map((game) => [game.id, game]));
 
-    expect(gap).toBeLessThanOrEqual(300);
-    expect(getRoundBucketLabel(1, run.challengerQueue)).toBe("cluster:opening");
-    expect(getRoundBucketLabel(2, run.challengerQueue)).toBe(run.challengerQueue[0].bucket);
+    for (const pair of run.roundPairs.slice(0, 4)) {
+      const left = gamesById.get(pair.leftGameId)!;
+      const right = gamesById.get(pair.rightGameId)!;
+      const gap = Math.abs(left.snapshotScore - right.snapshotScore);
+
+      expect(left.seedRank).toBeLessThanOrEqual(250);
+      expect(right.seedRank).toBeLessThanOrEqual(250);
+      expect(gap).toBeLessThanOrEqual(220);
+    }
   });
 
-  it("produces tight gaps for high-tier game clusters", () => {
+  it("caps discovery rounds and anchors deep cuts", () => {
     vi.spyOn(Math, "random").mockImplementation(() => 0);
 
-    const run = buildRunDefinition(createHighTierSnapshot());
-    const leftScore = run.games[run.initialPair.leftGameId].snapshotScore;
-    const rightScore = run.games[run.initialPair.rightGameId].snapshotScore;
-    const gap = Math.abs(leftScore - rightScore);
+    const snapshot = createLargeSnapshot();
+    const run = buildRunDefinition(snapshot);
+    const gamesById = new Map(snapshot.games.map((game) => [game.id, game]));
+    const discoveryPairs = run.roundPairs.filter((pair) => pair.bucket === "discovery:anchored");
+    const deepCutVsDeepCutPairs = run.roundPairs.filter((pair) => {
+      const left = gamesById.get(pair.leftGameId)!;
+      const right = gamesById.get(pair.rightGameId)!;
+      return left.seedRank >= 650 && right.seedRank >= 650;
+    });
 
-    expect(gap).toBeLessThanOrEqual(40);
+    expect(discoveryPairs.length).toBeLessThanOrEqual(5);
+    expect(deepCutVsDeepCutPairs.length).toBeLessThanOrEqual(1);
+
+    for (const pair of discoveryPairs) {
+      const left = gamesById.get(pair.leftGameId)!;
+      const right = gamesById.get(pair.rightGameId)!;
+      expect(left.seedRank <= 500 || right.seedRank <= 500).toBe(true);
+    }
+  });
+
+  it("ends with a top one percent boss game", () => {
+    vi.spyOn(Math, "random").mockImplementation(() => 0);
+
+    const snapshot = createLargeSnapshot();
+    const run = buildRunDefinition(snapshot);
+    const finalPair = run.roundPairs[MAX_RUN_ROUNDS - 1];
+    const topIds = new Set(snapshot.games.slice(0, Math.ceil(snapshot.games.length * 0.01)).map((game) => game.id));
+
+    expect(finalPair.bucket).toBe("final:top-1-percent");
+    expect(topIds.has(finalPair.leftGameId) || topIds.has(finalPair.rightGameId)).toBe(true);
+  });
+
+  it("randomizes fixed pair side placement", () => {
+    vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValue(0.75);
+
+    const run = buildRunDefinition(createHighTierSnapshot());
+    const hasHigherRatedRight = run.roundPairs.some((pair) => {
+      const leftScore = run.games[pair.leftGameId].snapshotScore;
+      const rightScore = run.games[pair.rightGameId].snapshotScore;
+      return rightScore > leftScore;
+    });
+
+    expect(hasHigherRatedRight).toBe(true);
   });
 });

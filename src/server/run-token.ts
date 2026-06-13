@@ -17,6 +17,11 @@ export type RunChallenger = {
   bucket: string;
 };
 
+export type RunRoundPair = RunPair & {
+  round: number;
+  bucket: string;
+};
+
 export type RunTokenPayload = {
   iss: "rankthegames";
   aud: "game-client";
@@ -26,6 +31,7 @@ export type RunTokenPayload = {
   expiresAt: string;
   initialPair: RunPair;
   challengerQueue: RunChallenger[];
+  roundPairs: RunRoundPair[];
   snapshotScores: Record<string, number>;
   gameIds: string[];
 };
@@ -54,6 +60,14 @@ const runTokenPayloadSchema = z.object({
       bucket: z.string().trim().min(1)
     })
   ),
+  roundPairs: z.array(
+    z.object({
+      round: z.number().int().positive(),
+      leftGameId: z.string().trim().min(1),
+      rightGameId: z.string().trim().min(1),
+      bucket: z.string().trim().min(1)
+    })
+  ).optional(),
   snapshotScores: z.record(z.string().trim().min(1), z.number()),
   gameIds: z.array(z.string().trim().min(1)).min(2)
 });
@@ -80,6 +94,7 @@ export async function issueRunToken(input: IssueRunTokenInput): Promise<IssuedRu
     expiresAt,
     initialPair: input.initialPair,
     challengerQueue: input.challengerQueue,
+    roundPairs: input.roundPairs,
     snapshotScores: input.snapshotScores,
     gameIds: input.gameIds
   })
@@ -107,8 +122,39 @@ export async function verifyRunToken(token: string): Promise<RunTokenPayload> {
 
   return {
     ...parsedPayload,
-    aud: RUN_TOKEN_AUDIENCE
+    aud: RUN_TOKEN_AUDIENCE,
+    roundPairs: parsedPayload.roundPairs ?? buildLegacyRoundPairs(parsedPayload)
   };
+}
+
+function buildLegacyRoundPairs(
+  payload: Omit<RunTokenPayload, "aud" | "roundPairs"> & {
+    aud: typeof RUN_TOKEN_AUDIENCE | typeof RUN_TOKEN_AUDIENCE[];
+    roundPairs?: RunRoundPair[];
+  }
+): RunRoundPair[] {
+  const pairs: RunRoundPair[] = [
+    {
+      round: 1,
+      leftGameId: payload.initialPair.leftGameId,
+      rightGameId: payload.initialPair.rightGameId,
+      bucket: "cluster:opening"
+    }
+  ];
+
+  let currentLeftGameId = payload.initialPair.leftGameId;
+
+  for (const challenger of [...payload.challengerQueue].sort((left, right) => left.round - right.round)) {
+    pairs.push({
+      round: challenger.round,
+      leftGameId: currentLeftGameId,
+      rightGameId: challenger.gameId,
+      bucket: challenger.bucket
+    });
+    currentLeftGameId = challenger.gameId;
+  }
+
+  return pairs;
 }
 
 export const runTokenConfig = {

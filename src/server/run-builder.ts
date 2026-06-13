@@ -4,18 +4,13 @@ import { getGamesCollection } from "./collections.ts";
 const LADDER_SNAPSHOT_TTL_MS = 180_000;
 export const MAX_RUN_ROUNDS = 20;
 const SELECTION_POOL_SIZE = 20;
-const OUTLIER_MIN_SCORE_GAP = 125;
-const OUTLIER_MAX_SCORE_GAP = 300;
-const MAX_OUTLIERS_PER_RUN = 2;
-const SCORE_BANDS: ScoreWindow[] = [
-  { minScore: 1, maxScore: 549 },
-  { minScore: 550, maxScore: 749 },
-  { minScore: 750, maxScore: 899 },
-  { minScore: 900, maxScore: Infinity },
-];
+const FAMILIAR_SEED_RANK_MAX = 500;
+const DEEP_CUT_SEED_RANK_MIN = 650;
+const DISCOVERY_APPEARANCE_ROUNDS = new Set([5, 8, 11, 14, 16]);
+const MAX_DEEP_CUT_VS_DEEP_CUT_ROUNDS = 1;
 const OPENING_BUCKET_LABEL = "cluster:opening";
 
-export const RUN_BAND_MODEL = "score_cluster.v1";
+export const RUN_BAND_MODEL = "balanced_fixed_pairs.v1";
 
 export type ScoreBasedParams = {
   coreScoreRadius: number;
@@ -94,21 +89,6 @@ export function getScoreBasedParams(anchorScore: number): ScoreBasedParams {
   };
 }
 
-type ScoreWindow = {
-  minScore: number;
-  maxScore: number;
-};
-
-type ClusterPlan = {
-  anchorGame: LadderSnapshotGame;
-  anchorScore: number;
-  coreWindow: ScoreWindow;
-  coreCandidates: LadderSnapshotGame[];
-  outlierCandidates: LadderSnapshotGame[];
-  desiredOutlierCount: number;
-  scoreParams: ScoreBasedParams;
-};
-
 export type LadderSnapshotGame = {
   id: string;
   name: string;
@@ -151,9 +131,17 @@ export type BuiltRunDefinition = {
     gameId: string;
     bucket: string;
   }>;
+  roundPairs: RunRoundPair[];
   games: Record<string, RunGamePayload>;
   snapshotScores: Record<string, number>;
   gameIds: string[];
+};
+
+export type RunRoundPair = {
+  round: number;
+  leftGameId: string;
+  rightGameId: string;
+  bucket: string;
 };
 
 export type LadderSnapshotMetrics = {
@@ -353,52 +341,47 @@ async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshotBuildRe
 }
 
 export function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition {
-  if (snapshot.games.length < MAX_RUN_ROUNDS + 1) {
-    throw new Error("Not enough games are available to build a full run.");
+  if (snapshot.games.length < 2) {
+    throw new Error("At least two games are required to build a run.");
   }
 
   const usedGameIds = new Set<string>();
-  const issuedGameIds: string[] = [];
-  const clusterPlan = buildClusterPlan(snapshot.games);
-  const initialPair = pickStartingPair(clusterPlan.coreCandidates, clusterPlan.scoreParams);
+  let deepCutVsDeepCutRounds = 0;
+  const roundPairs: RunRoundPair[] = [];
 
-  usedGameIds.add(initialPair.left.id);
-  usedGameIds.add(initialPair.right.id);
-  issuedGameIds.push(initialPair.left.id, initialPair.right.id);
+  for (let round = 1; round <= MAX_RUN_ROUNDS; round += 1) {
+    const pair = pickRoundPair({
+      round,
+      games: snapshot.games,
+      usedGameIds,
+      allowDeepCutVsDeepCut: deepCutVsDeepCutRounds < MAX_DEEP_CUT_VS_DEEP_CUT_ROUNDS
+    });
 
-  const outlierSelections = pickOutlierCandidates(clusterPlan, usedGameIds);
-  for (const outlier of outlierSelections) {
-    usedGameIds.add(outlier.id);
+    if (isDeepCut(pair.left) && isDeepCut(pair.right)) {
+      deepCutVsDeepCutRounds += 1;
+    }
+
+    usedGameIds.add(pair.left.id);
+    usedGameIds.add(pair.right.id);
+
+    const arrangedPair = arrangePairSides(pair.left, pair.right);
+    roundPairs.push({
+      round,
+      leftGameId: arrangedPair.left.id,
+      rightGameId: arrangedPair.right.id,
+      bucket: pair.bucket
+    });
   }
 
-  const coreChallengerCount = MAX_RUN_ROUNDS - 1 - outlierSelections.length;
-  const coreChallengers = pickDistinctCandidates(
-    prioritizeCoreCandidates(clusterPlan.coreCandidates, clusterPlan.anchorScore).filter(
-      (candidate) => !usedGameIds.has(candidate.id)
-    ),
-    coreChallengerCount
+  const issuedGameIds = Array.from(
+    new Set(roundPairs.flatMap((pair) => [pair.leftGameId, pair.rightGameId]))
   );
-
-  for (const challenger of coreChallengers) {
-    usedGameIds.add(challenger.id);
-  }
-
-  const challengerEntries = arrangeChallengers(
-    coreChallengers,
-    outlierSelections,
-    clusterPlan.coreWindow,
-    clusterPlan.anchorScore
-  );
-
-  const challengerQueue = challengerEntries.map((entry, index) => {
-    issuedGameIds.push(entry.game.id);
-
-    return {
-      round: index + 2,
-      gameId: entry.game.id,
-      bucket: entry.bucket
-    };
-  });
+  const initialPair = roundPairs[0];
+  const challengerQueue = roundPairs.slice(1).map((pair) => ({
+    round: pair.round,
+    gameId: pair.rightGameId,
+    bucket: pair.bucket
+  }));
 
   const games = Object.fromEntries(
     issuedGameIds.map((gameId) => {
@@ -432,377 +415,310 @@ export function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition
     snapshotVersion: snapshot.snapshotVersion,
     bandModel: RUN_BAND_MODEL,
     initialPair: {
-      leftGameId: initialPair.left.id,
-      rightGameId: initialPair.right.id
+      leftGameId: initialPair.leftGameId,
+      rightGameId: initialPair.rightGameId
     },
     challengerQueue,
+    roundPairs,
     games,
     snapshotScores,
     gameIds: issuedGameIds
   };
 }
 
-function buildClusterPlan(games: LadderSnapshotGame[]): ClusterPlan {
-  const totalGamesNeeded = MAX_RUN_ROUNDS + 1;
-  const anchorCandidates = getAnchorCandidates(games);
-  const viablePlans: ClusterPlan[] = [];
+type RoundPairSelection = {
+  left: LadderSnapshotGame;
+  right: LadderSnapshotGame;
+  bucket: string;
+};
 
-  for (const anchorGame of anchorCandidates) {
-    const scoreParams = getScoreBasedParams(anchorGame.snapshotScore);
+type PickRoundPairInput = {
+  round: number;
+  games: LadderSnapshotGame[];
+  usedGameIds: Set<string>;
+  allowDeepCutVsDeepCut: boolean;
+};
 
-    for (
-      let scoreRadius = scoreParams.coreScoreRadius;
-      scoreRadius <= scoreParams.maxCoreScoreRadius;
-      scoreRadius += scoreParams.radiusExpansionStep
-    ) {
-      const coreWindow = {
-        minScore: Math.max(1, anchorGame.snapshotScore - scoreRadius),
-        maxScore: anchorGame.snapshotScore + scoreRadius
-      };
-      const coreCandidates = games.filter((game) =>
-        isScoreInWindow(game.snapshotScore, coreWindow)
-      );
-      const outlierCandidates = games.filter((game) =>
-        isOutlierCandidate(game, anchorGame.snapshotScore, coreWindow)
-      );
-      const desiredOutlierCount = determineOutlierCount(
-        coreCandidates.length,
-        outlierCandidates.length,
-        totalGamesNeeded
-      );
-
-      if (coreCandidates.length < totalGamesNeeded - desiredOutlierCount) {
-        continue;
-      }
-
-      viablePlans.push({
-        anchorGame,
-        anchorScore: anchorGame.snapshotScore,
-        coreWindow,
-        coreCandidates,
-        outlierCandidates,
-        desiredOutlierCount,
-        scoreParams
-      });
-
-      break;
-    }
+function pickRoundPair({
+  round,
+  games,
+  usedGameIds,
+  allowDeepCutVsDeepCut
+}: PickRoundPairInput): RoundPairSelection {
+  if (round === MAX_RUN_ROUNDS) {
+    return pickFinalBossPair(games, usedGameIds);
   }
 
-  if (viablePlans.length === 0) {
-    throw new Error("Unable to build a clustered run pool from the current ladder snapshot.");
+  if (DISCOVERY_APPEARANCE_ROUNDS.has(round)) {
+    return pickDiscoveryPair(games, usedGameIds, allowDeepCutVsDeepCut);
   }
 
-  viablePlans.sort((left, right) => {
-    if (left.desiredOutlierCount !== right.desiredOutlierCount) {
-      return right.desiredOutlierCount - left.desiredOutlierCount;
-    }
-
-    if (left.anchorGame.totalAppearances !== right.anchorGame.totalAppearances) {
-      return left.anchorGame.totalAppearances - right.anchorGame.totalAppearances;
-    }
-
-    const leftCentrality = Math.abs(left.anchorGame.percentileFromBottom - 50);
-    const rightCentrality = Math.abs(right.anchorGame.percentileFromBottom - 50);
-
-    if (leftCentrality !== rightCentrality) {
-      return leftCentrality - rightCentrality;
-    }
-
-    return left.anchorGame.id.localeCompare(right.anchorGame.id);
-  });
-
-  return sample(viablePlans.slice(0, Math.min(SELECTION_POOL_SIZE, viablePlans.length)));
-}
-
-function getAnchorCandidates(games: LadderSnapshotGame[]) {
-  const populatedBands = SCORE_BANDS.map((band) => ({
-    band,
-    games: games.filter(
-      (game) => game.snapshotScore >= band.minScore && game.snapshotScore <= band.maxScore
-    ),
-  })).filter((entry) => entry.games.length > 0);
-
-  if (populatedBands.length === 0) {
-    return prioritizeByExposure(games);
-  }
-
-  const weights = populatedBands.map((entry) => {
-    const avgAppearances =
-      entry.games.reduce((sum, game) => sum + game.totalAppearances, 0) / entry.games.length;
-    return 1 / (1 + avgAppearances);
-  });
-
-  const selected = weightedSample(populatedBands, weights);
-  return prioritizeByExposure(selected.games);
-}
-
-function determineOutlierCount(coreCount: number, outlierCount: number, totalGamesNeeded: number) {
-  for (let desiredCount = MAX_OUTLIERS_PER_RUN; desiredCount >= 0; desiredCount -= 1) {
-    if (outlierCount >= desiredCount && coreCount >= totalGamesNeeded - desiredCount) {
-      return desiredCount;
-    }
-  }
-
-  return 0;
-}
-
-function isScoreInWindow(score: number, window: ScoreWindow) {
-  return score >= window.minScore && score <= window.maxScore;
-}
-
-function isOutlierCandidate(game: LadderSnapshotGame, anchorScore: number, coreWindow: ScoreWindow) {
-  const scoreGap = Math.abs(game.snapshotScore - anchorScore);
-
-  return (
-    !isScoreInWindow(game.snapshotScore, coreWindow) &&
-    scoreGap >= OUTLIER_MIN_SCORE_GAP &&
-    scoreGap <= OUTLIER_MAX_SCORE_GAP
-  );
-}
-
-function pickStartingPair(candidates: LadderSnapshotGame[], scoreParams: ScoreBasedParams) {
-  const prioritizedPool = prioritizeByExposure(candidates).slice(0, SELECTION_POOL_SIZE);
-
-  if (prioritizedPool.length < 2) {
-    throw new Error("Not enough eligible games were available to choose an opening pair.");
-  }
-
-  const compatiblePairs: Array<{ pair: [LadderSnapshotGame, LadderSnapshotGame]; gap: number }> = [];
-
-  for (let leftIndex = 0; leftIndex < prioritizedPool.length - 1; leftIndex += 1) {
-    for (let rightIndex = leftIndex + 1; rightIndex < prioritizedPool.length; rightIndex += 1) {
-      const left = prioritizedPool[leftIndex];
-      const right = prioritizedPool[rightIndex];
-      const gap = Math.abs(left.snapshotScore - right.snapshotScore);
-
-      if (gap >= scoreParams.startingPairMinGap && gap <= scoreParams.startingPairMaxGap) {
-        compatiblePairs.push({ pair: [left, right], gap });
-      }
-    }
-  }
-
-  if (compatiblePairs.length === 0) {
-    const [first, second] = sampleAllPairs(prioritizedPool);
-    return Math.random() < 0.5
-      ? { left: first, right: second }
-      : { left: second, right: first };
-  }
-
-  const weightedPairs = compatiblePairs.flatMap(({ pair, gap }) => {
-    const weight = Math.min(4, Math.floor((gap / scoreParams.startingPairPreferredGap) + 1));
-    return Array(weight).fill(pair);
-  });
-
-  const [first, second] = sample(weightedPairs);
-
-  return Math.random() < 0.5
-    ? { left: first, right: second }
-    : { left: second, right: first };
-}
-
-function sampleAllPairs(pool: LadderSnapshotGame[]) {
-  const pairCount = (pool.length * (pool.length - 1)) / 2;
-  const targetPairIndex = Math.floor(Math.random() * pairCount);
-  let currentPairIndex = 0;
-
-  for (let leftIndex = 0; leftIndex < pool.length - 1; leftIndex += 1) {
-    for (let rightIndex = leftIndex + 1; rightIndex < pool.length; rightIndex += 1) {
-      if (currentPairIndex === targetPairIndex) {
-        return [pool[leftIndex], pool[rightIndex]] as const;
-      }
-
-      currentPairIndex += 1;
-    }
-  }
-
-  throw new Error("Unable to sample a starting pair.");
-}
-
-function pickOutlierCandidates(plan: ClusterPlan, usedGameIds: Set<string>) {
-  if (plan.desiredOutlierCount === 0) {
-    return [] as LadderSnapshotGame[];
-  }
-
-  const lowerOutliers = prioritizeOutlierCandidates(
-    plan.outlierCandidates.filter(
-      (game) => game.snapshotScore < plan.coreWindow.minScore && !usedGameIds.has(game.id)
-    ),
-    plan.anchorScore
-  );
-  const higherOutliers = prioritizeOutlierCandidates(
-    plan.outlierCandidates.filter(
-      (game) => game.snapshotScore > plan.coreWindow.maxScore && !usedGameIds.has(game.id)
-    ),
-    plan.anchorScore
-  );
-  const selections: LadderSnapshotGame[] = [];
-
-  if (plan.desiredOutlierCount === 2 && lowerOutliers.length > 0 && higherOutliers.length > 0) {
-    selections.push(sample(lowerOutliers.slice(0, Math.min(SELECTION_POOL_SIZE, lowerOutliers.length))));
-    selections.push(
-      sample(higherOutliers.slice(0, Math.min(SELECTION_POOL_SIZE, higherOutliers.length)))
-    );
-    return selections;
-  }
-
-  const combined = prioritizeOutlierCandidates(
-    [...lowerOutliers, ...higherOutliers],
-    plan.anchorScore
-  );
-
-  return pickDistinctCandidates(combined, plan.desiredOutlierCount);
-}
-
-function arrangeChallengers(
-  coreChallengers: LadderSnapshotGame[],
-  outlierSelections: LadderSnapshotGame[],
-  coreWindow: ScoreWindow,
-  anchorScore: number
-) {
-  const entries = coreChallengers.map((game) => ({
-    game,
-    bucket: formatCoreBucketWindow(coreWindow)
-  }));
-
-  if (outlierSelections.length === 0) {
-    return entries;
-  }
-
-  const insertionIndexes = getOutlierInsertionIndexes(entries.length, outlierSelections.length);
-
-  outlierSelections.forEach((game, index) => {
-    const insertionIndex = Math.min(insertionIndexes[index], entries.length);
-    entries.splice(insertionIndex, 0, {
-      game,
-      bucket: formatOutlierBucket(game.snapshotScore, anchorScore)
+  if (round >= 18) {
+    return pickPlannedPair({
+      bucket: "elite:setup",
+      primaryCandidates: games.filter(isEliteGame),
+      secondaryCandidates: games.filter(isRecognizable),
+      games,
+      usedGameIds,
+      targetGap: 75,
+      maxGap: 150,
+      allowDeepCutVsDeepCut: false
     });
+  }
+
+  if (round >= 12) {
+    return pickPlannedPair({
+      bucket: "core:hard",
+      primaryCandidates: games.filter(isRecognizable),
+      secondaryCandidates: games.filter(isRecognizable),
+      games,
+      usedGameIds,
+      targetGap: 60,
+      maxGap: 125,
+      allowDeepCutVsDeepCut: false
+    });
+  }
+
+  if (round >= 6) {
+    return pickPlannedPair({
+      bucket: "core:balanced",
+      primaryCandidates: games.filter(isKnownGame),
+      secondaryCandidates: games.filter(isKnownGame),
+      games,
+      usedGameIds,
+      targetGap: 90,
+      maxGap: 150,
+      allowDeepCutVsDeepCut: false
+    });
+  }
+
+  return pickPlannedPair({
+    bucket: "warmup:recognizable",
+    primaryCandidates: games.filter(isFamiliarGame),
+    secondaryCandidates: games.filter(isFamiliarGame),
+    games,
+    usedGameIds,
+    targetGap: 120,
+    maxGap: 220,
+    allowDeepCutVsDeepCut: false
+  });
+}
+
+function pickDiscoveryPair(
+  games: LadderSnapshotGame[],
+  usedGameIds: Set<string>,
+  allowDeepCutVsDeepCut: boolean
+) {
+  return pickPlannedPair({
+    bucket: "discovery:anchored",
+    primaryCandidates: games.filter(isDeepCut),
+    secondaryCandidates: games.filter(isRecognizable),
+    games,
+    usedGameIds,
+    targetGap: 100,
+    maxGap: 180,
+    allowDeepCutVsDeepCut
+  });
+}
+
+function pickFinalBossPair(games: LadderSnapshotGame[], usedGameIds: Set<string>) {
+  const topGameCount = Math.max(1, Math.ceil(games.length * 0.01));
+  const topOnePercentGames = games.slice(0, topGameCount);
+
+  return pickPlannedPair({
+    bucket: "final:top-1-percent",
+    primaryCandidates: topOnePercentGames,
+    secondaryCandidates: games.filter((game) => isRecognizable(game) && !topOnePercentGames.includes(game)),
+    games,
+    usedGameIds,
+    targetGap: 80,
+    maxGap: 180,
+    allowDeepCutVsDeepCut: false,
+    allowUsedPrimary: true
+  });
+}
+
+function pickPlannedPair({
+  bucket,
+  primaryCandidates,
+  secondaryCandidates,
+  games,
+  usedGameIds,
+  targetGap,
+  maxGap,
+  allowDeepCutVsDeepCut,
+  allowUsedPrimary = false
+}: {
+  bucket: string;
+  primaryCandidates: LadderSnapshotGame[];
+  secondaryCandidates: LadderSnapshotGame[];
+  games: LadderSnapshotGame[];
+  usedGameIds: Set<string>;
+  targetGap: number;
+  maxGap: number;
+  allowDeepCutVsDeepCut: boolean;
+  allowUsedPrimary?: boolean;
+}): RoundPairSelection {
+  const fallbackPrimary = primaryCandidates.length > 0 ? primaryCandidates : games;
+  const fallbackSecondary = secondaryCandidates.length > 0 ? secondaryCandidates : games;
+  const pair =
+    findPair(fallbackPrimary, fallbackSecondary, {
+      usedGameIds,
+      targetGap,
+      maxGap,
+      allowDeepCutVsDeepCut,
+      allowUsedPrimary,
+      allowUsedAny: false
+    }) ??
+    findPair(fallbackPrimary, fallbackSecondary, {
+      usedGameIds,
+      targetGap,
+      maxGap: maxGap * 2,
+      allowDeepCutVsDeepCut,
+      allowUsedPrimary,
+      allowUsedAny: false
+    }) ??
+    findPair(fallbackPrimary, fallbackSecondary, {
+      usedGameIds,
+      targetGap,
+      maxGap: Infinity,
+      allowDeepCutVsDeepCut: true,
+      allowUsedPrimary,
+      allowUsedAny: false
+    }) ??
+    findPair(fallbackPrimary, fallbackSecondary, {
+      usedGameIds,
+      targetGap,
+      maxGap: Infinity,
+      allowDeepCutVsDeepCut: true,
+      allowUsedPrimary: true,
+      allowUsedAny: true
+    });
+
+  if (!pair) {
+    throw new Error("Unable to build a scheduled matchup pair from the current ladder snapshot.");
+  }
+
+  return {
+    ...pair,
+    bucket
+  };
+}
+
+function findPair(
+  primaryCandidates: LadderSnapshotGame[],
+  secondaryCandidates: LadderSnapshotGame[],
+  options: {
+    usedGameIds: Set<string>;
+    targetGap: number;
+    maxGap: number;
+    allowDeepCutVsDeepCut: boolean;
+    allowUsedPrimary: boolean;
+    allowUsedAny: boolean;
+  }
+) {
+  const primaryPool = limitCandidatePool(primaryCandidates, options.usedGameIds, options.allowUsedPrimary);
+  const secondaryPool = limitCandidatePool(secondaryCandidates, options.usedGameIds, options.allowUsedAny);
+  const candidates: Array<{
+    left: LadderSnapshotGame;
+    right: LadderSnapshotGame;
+    score: number;
+  }> = [];
+
+  for (const primary of primaryPool) {
+    for (const secondary of secondaryPool) {
+      if (primary.id === secondary.id) continue;
+      if (!options.allowUsedAny && options.usedGameIds.has(secondary.id)) continue;
+      if (!options.allowUsedPrimary && options.usedGameIds.has(primary.id)) continue;
+      if (!options.allowDeepCutVsDeepCut && isDeepCut(primary) && isDeepCut(secondary)) continue;
+
+      const gap = Math.abs(primary.snapshotScore - secondary.snapshotScore);
+      if (gap > options.maxGap) continue;
+
+      candidates.push({
+        left: primary,
+        right: secondary,
+        score:
+          Math.abs(gap - options.targetGap) +
+          getExposureScore(primary) +
+          getExposureScore(secondary)
+      });
+    }
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((left, right) => {
+    if (left.score !== right.score) return left.score - right.score;
+    return Math.random() - 0.5;
   });
 
-  return entries;
+  const selectionPool = candidates.slice(0, Math.min(SELECTION_POOL_SIZE, candidates.length));
+  const selected = sample(selectionPool);
+
+  return {
+    left: selected.left,
+    right: selected.right
+  };
 }
 
-function getOutlierInsertionIndexes(coreCount: number, outlierCount: number) {
-  if (outlierCount === 1) {
-    return [Math.max(1, Math.floor(coreCount / 2))];
-  }
-
-  return [
-    Math.max(1, Math.floor(coreCount / 3)),
-    Math.max(2, Math.floor((coreCount * 2) / 3) + 1)
-  ];
-}
-
-function pickDistinctCandidates(candidates: LadderSnapshotGame[], count: number) {
-  if (count === 0) {
-    return [] as LadderSnapshotGame[];
-  }
-
-  const selectionPool = candidates.slice(0, Math.max(count, Math.min(SELECTION_POOL_SIZE, candidates.length)));
-
-  if (selectionPool.length < count) {
-    throw new Error("Not enough eligible games were available to fill the run definition.");
-  }
-
-  return sampleWithoutReplacement(selectionPool, count);
-}
-
-function sampleWithoutReplacement<T>(values: readonly T[], count: number) {
-  const pool = [...values];
-  const selected: T[] = [];
-
-  while (selected.length < count) {
-    const nextIndex = Math.floor(Math.random() * pool.length);
-    const [nextValue] = pool.splice(nextIndex, 1);
-    selected.push(nextValue);
-  }
-
-  return selected;
-}
-
-function prioritizeCoreCandidates(candidates: LadderSnapshotGame[], anchorScore: number) {
-  return [...candidates].sort((left, right) => {
+function limitCandidatePool(
+  candidates: LadderSnapshotGame[],
+  usedGameIds: Set<string>,
+  allowUsed: boolean
+) {
+  const eligible = allowUsed ? candidates : candidates.filter((game) => !usedGameIds.has(game.id));
+  const prioritized = [...eligible].sort((left, right) => {
     if (left.totalAppearances !== right.totalAppearances) {
       return left.totalAppearances - right.totalAppearances;
     }
 
-    const leftDistance = Math.abs(left.snapshotScore - anchorScore);
-    const rightDistance = Math.abs(right.snapshotScore - anchorScore);
-
-    if (leftDistance !== rightDistance) {
-      return leftDistance - rightDistance;
+    if (left.seedRank !== right.seedRank) {
+      return left.seedRank - right.seedRank;
     }
 
-    if (left.snapshotScore !== right.snapshotScore) {
-      return left.snapshotScore - right.snapshotScore;
-    }
-
-    return left.id.localeCompare(right.id);
+    return Math.random() - 0.5;
   });
+
+  return prioritized.slice(0, Math.max(SELECTION_POOL_SIZE * 3, MAX_RUN_ROUNDS * 2));
 }
 
-function prioritizeOutlierCandidates(candidates: LadderSnapshotGame[], anchorScore: number) {
-  return [...candidates].sort((left, right) => {
-    if (left.totalAppearances !== right.totalAppearances) {
-      return left.totalAppearances - right.totalAppearances;
-    }
-
-    const leftGapDistance = Math.abs(
-      Math.abs(left.snapshotScore - anchorScore) - getPreferredOutlierGap(anchorScore)
-    );
-    const rightGapDistance = Math.abs(
-      Math.abs(right.snapshotScore - anchorScore) - getPreferredOutlierGap(anchorScore)
-    );
-
-    if (leftGapDistance !== rightGapDistance) {
-      return leftGapDistance - rightGapDistance;
-    }
-
-    return left.id.localeCompare(right.id);
-  });
+function arrangePairSides(left: LadderSnapshotGame, right: LadderSnapshotGame) {
+  return Math.random() < 0.5
+    ? { left, right }
+    : { left: right, right: left };
 }
 
-function prioritizeByExposure(candidates: LadderSnapshotGame[]) {
-  // Shuffle first so that within each appearance tier, scores are randomly spread
-  // rather than clustered at the low end (which starved pickStartingPair of gap diversity)
-  const shuffled = [...candidates].sort(() => Math.random() - 0.5);
-  return shuffled.sort((left, right) => {
-    return left.totalAppearances - right.totalAppearances;
-  });
+function isFamiliarGame(game: LadderSnapshotGame) {
+  return game.seedRank <= 250;
+}
+
+function isKnownGame(game: LadderSnapshotGame) {
+  return game.seedRank <= FAMILIAR_SEED_RANK_MAX;
+}
+
+function isRecognizable(game: LadderSnapshotGame) {
+  return game.seedRank <= FAMILIAR_SEED_RANK_MAX || game.percentileFromBottom >= 85;
+}
+
+function isDeepCut(game: LadderSnapshotGame) {
+  return game.seedRank >= DEEP_CUT_SEED_RANK_MIN;
+}
+
+function isEliteGame(game: LadderSnapshotGame) {
+  return game.percentileFromBottom >= 90;
+}
+
+function getExposureScore(game: LadderSnapshotGame) {
+  return Math.min(game.totalAppearances, 50) / 10;
 }
 
 function sample<T>(values: readonly T[]) {
   return values[Math.floor(Math.random() * values.length)];
 }
 
-function weightedSample<T>(items: readonly T[], weights: readonly number[]): T {
-  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-  let random = Math.random() * totalWeight;
-
-  for (let i = 0; i < items.length; i++) {
-    random -= weights[i];
-    if (random <= 0) return items[i];
-  }
-
-  return items[items.length - 1];
-}
-
 function getPercentileFromBottom(index: number, totalGames: number) {
   return Number((((totalGames - index) / totalGames) * 100).toFixed(3));
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function getPreferredOutlierGap(_anchorScore: number) {
-  return 300;
-}
-
-function formatCoreBucketWindow(window: ScoreWindow) {
-  return `cluster:${window.minScore}-${window.maxScore}`;
-}
-
-function formatOutlierBucket(score: number, anchorScore: number) {
-  const delta = score - anchorScore;
-  const direction = delta >= 0 ? "+" : "";
-
-  return `outlier:${direction}${delta}`;
 }

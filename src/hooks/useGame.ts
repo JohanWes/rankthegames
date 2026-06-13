@@ -5,6 +5,7 @@ import type {
   GameState,
   RunGame,
   RunChallenger,
+  RunPair,
   RunSelection,
   CreateRunResponse
 } from "@/lib/types";
@@ -26,6 +27,7 @@ type State = {
   signedRunToken: string | null;
   games: Record<string, RunGame>;
   challengerQueue: RunChallenger[];
+  roundPairs: RunPair[];
   leftGame: RunGame | null;
   rightGame: RunGame | null;
   currentRound: number;
@@ -57,6 +59,7 @@ function getInitialState(): State {
     signedRunToken: null,
     games: {},
     challengerQueue: [],
+    roundPairs: [],
     leftGame: null,
     rightGame: null,
     currentRound: 0,
@@ -70,6 +73,40 @@ function getInitialState(): State {
   };
 }
 
+function getIssuedRoundPairs(payload: CreateRunResponse): RunPair[] {
+  if (payload.roundPairs.length > 0) {
+    return payload.roundPairs;
+  }
+
+  return [
+    {
+      round: 1,
+      leftGameId: payload.initialPair.leftGameId,
+      rightGameId: payload.initialPair.rightGameId,
+      bucket: "cluster:opening"
+    },
+    ...payload.challengerQueue.map((challenger) => ({
+      round: challenger.round,
+      leftGameId: payload.initialPair.leftGameId,
+      rightGameId: challenger.gameId,
+      bucket: challenger.bucket
+    }))
+  ];
+}
+
+function getRoundPairGames(
+  games: Record<string, RunGame>,
+  roundPairs: RunPair[],
+  round: number
+) {
+  const roundPair = roundPairs.find((pair) => pair.round === round);
+
+  return {
+    leftGame: roundPair ? games[roundPair.leftGameId] ?? null : null,
+    rightGame: roundPair ? games[roundPair.rightGameId] ?? null : null
+  };
+}
+
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "FETCH_START":
@@ -77,8 +114,8 @@ function reducer(state: State, action: Action): State {
 
     case "FETCH_SUCCESS": {
       const { payload, highScore } = action;
-      const leftGame = payload.games[payload.initialPair.leftGameId] ?? null;
-      const rightGame = payload.games[payload.initialPair.rightGameId] ?? null;
+      const roundPairs = getIssuedRoundPairs(payload);
+      const { leftGame, rightGame } = getRoundPairGames(payload.games, roundPairs, 1);
 
       return {
         ...getInitialState(),
@@ -87,6 +124,7 @@ function reducer(state: State, action: Action): State {
         signedRunToken: payload.signedRunToken,
         games: payload.games,
         challengerQueue: payload.challengerQueue,
+        roundPairs,
         leftGame,
         rightGame,
         currentRound: 1,
@@ -102,8 +140,8 @@ function reducer(state: State, action: Action): State {
 
     case "FETCH_SUCCESS_CONTINUE": {
       const { payload } = action;
-      const leftGame = payload.games[payload.initialPair.leftGameId] ?? null;
-      const rightGame = payload.games[payload.initialPair.rightGameId] ?? null;
+      const roundPairs = getIssuedRoundPairs(payload);
+      const { leftGame, rightGame } = getRoundPairGames(payload.games, roundPairs, 1);
 
       return {
         ...getInitialState(),
@@ -112,6 +150,7 @@ function reducer(state: State, action: Action): State {
         signedRunToken: payload.signedRunToken,
         games: payload.games,
         challengerQueue: payload.challengerQueue,
+        roundPairs,
         leftGame,
         rightGame,
         currentRound: 1,
@@ -197,23 +236,17 @@ function reducer(state: State, action: Action): State {
         };
       }
 
-      // Winner-stays: picked game becomes left, next challenger becomes right
-      const lastSelection = state.selections[state.selections.length - 1];
-      if (!lastSelection) return state;
-
-      const pickedGame = state.games[lastSelection.pickedGameId] ?? null;
-      const nextChallenger = state.challengerQueue.find(
-        (c) => c.round === state.currentRound + 1
+      const { leftGame, rightGame } = getRoundPairGames(
+        state.games,
+        state.roundPairs,
+        state.currentRound + 1
       );
-      const nextRightGame = nextChallenger
-        ? state.games[nextChallenger.gameId] ?? null
-        : null;
 
       return {
         ...state,
         phase: "AWAITING_CHOICE",
-        leftGame: pickedGame,
-        rightGame: nextRightGame,
+        leftGame,
+        rightGame,
         currentRound: state.currentRound + 1
       };
     }
@@ -255,6 +288,7 @@ export type UseGameReturn = {
   signedRunToken: string | null;
   startedAt: number | null;
   challengerQueue: RunChallenger[];
+  roundPairs: RunPair[];
   games: Record<string, RunGame>;
   selectGame: (gameId: string) => void;
   playAgain: () => void;
@@ -410,6 +444,7 @@ export function useGame(): UseGameReturn {
     signedRunToken: state.signedRunToken,
     startedAt: state.startedAt,
     challengerQueue: state.challengerQueue,
+    roundPairs: state.roundPairs,
     games: state.games,
     selectGame,
     playAgain,

@@ -32,6 +32,7 @@ export async function POST(request: Request) {
       snapshotVersion: runDefinition.snapshotVersion,
       initialPair: runDefinition.initialPair,
       challengerQueue: runDefinition.challengerQueue,
+      roundPairs: runDefinition.roundPairs,
       snapshotScores: runDefinition.snapshotScores,
       gameIds: runDefinition.gameIds
     });
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
         bandModel: runDefinition.bandModel,
         initialPair: runDefinition.initialPair,
         challengerQueue: runDefinition.challengerQueue,
+        roundPairs: runDefinition.roundPairs,
         games: runDefinition.games,
         signedRunToken: token.signedRunToken
       },

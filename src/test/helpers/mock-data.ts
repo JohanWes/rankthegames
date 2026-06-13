@@ -52,6 +52,20 @@ export function createMockRunResponse(
     gameId: id,
     bucket: `${10 + i * 10}-${20 + i * 10}`
   }));
+  const roundPairs = [
+    {
+      round: 1,
+      leftGameId: "g1",
+      rightGameId: "g2",
+      bucket: "warmup:recognizable"
+    },
+    ...challengerQueue.map((challenger) => ({
+      round: challenger.round,
+      leftGameId: "g1",
+      rightGameId: challenger.gameId,
+      bucket: challenger.bucket
+    }))
+  ];
 
   return {
     runId: "test-run-001",
@@ -64,6 +78,7 @@ export function createMockRunResponse(
       rightGameId: "g2"
     },
     challengerQueue,
+    roundPairs,
     games,
     signedRunToken: "mock-signed-token",
     ...overrides

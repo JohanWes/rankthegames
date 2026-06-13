@@ -107,7 +107,7 @@ describe("useGame", () => {
     expect(result.current.phase).toBe("AWAITING_CHOICE");
     expect(result.current.currentRound).toBe(2);
 
-    // Winner-stays: picked game (g1) becomes left, challenger (g3) becomes right
+    // Fixed schedule: the next issued pair is shown.
     expect(result.current.leftGame?.id).toBe("g1");
     expect(result.current.rightGame?.id).toBe("g3");
   });
@@ -297,34 +297,37 @@ describe("useGame", () => {
     expect(result.current.runId).toBe("test-run-002");
   });
 
-  it("winner-stays: picked game becomes leftGame, next challenger becomes rightGame", async () => {
-    mockFetchSuccess();
+  it("advances to the next issued fixed pair instead of carrying the picked game", async () => {
+    const fixedRun = createMockRunResponse({
+      roundPairs: [
+        { round: 1, leftGameId: "g1", rightGameId: "g2", bucket: "warmup:recognizable" },
+        { round: 2, leftGameId: "g3", rightGameId: "g4", bucket: "core:balanced" },
+        { round: 3, leftGameId: "g1", rightGameId: "g5", bucket: "core:balanced" }
+      ]
+    });
+    fixedRun.games.g3.snapshotScore = 490;
+    fixedRun.games.g4.snapshotScore = 460;
+    mockFetchSuccess(fixedRun);
     const { result } = renderHook(() => useGame());
 
     await act(async () => {
       await vi.runAllTimersAsync();
     });
 
-    // Round 1: pick g1 (left, correct). g1 stays left, g3 enters right
+    // Round 1: pick g1 (left, correct). Round 2 should use the issued g3 vs g4 pair.
     act(() => result.current.selectGame("g1"));
     await act(async () => await vi.advanceTimersByTimeAsync(900));
     await act(async () => await vi.advanceTimersByTimeAsync(1100));
     await act(async () => await vi.advanceTimersByTimeAsync(500));
-    expect(result.current.leftGame?.id).toBe("g1");
-    expect(result.current.rightGame?.id).toBe("g3");
-
-    // Round 2: pick g1 again (600 > 490). g1 stays left, g4 enters right
-    act(() => result.current.selectGame("g1"));
-    await act(async () => await vi.advanceTimersByTimeAsync(900));
-    await act(async () => await vi.advanceTimersByTimeAsync(1100));
-    await act(async () => await vi.advanceTimersByTimeAsync(500));
-    expect(result.current.leftGame?.id).toBe("g1");
+    expect(result.current.leftGame?.id).toBe("g3");
     expect(result.current.rightGame?.id).toBe("g4");
 
-    // Round 3: pick challenger g4 instead.
-    // g1 score=600, g4 score=460 → g1 is correct. Picking g4 is WRONG.
-    act(() => result.current.selectGame("g4"));
+    // Round 2: pick g3 correctly. Round 3 is issued as g1 vs g5, not g3 vs g5.
+    act(() => result.current.selectGame("g3"));
     await act(async () => await vi.advanceTimersByTimeAsync(900));
-    expect(result.current.phase).toBe("INCORRECT");
+    await act(async () => await vi.advanceTimersByTimeAsync(1100));
+    await act(async () => await vi.advanceTimersByTimeAsync(500));
+    expect(result.current.leftGame?.id).toBe("g1");
+    expect(result.current.rightGame?.id).toBe("g5");
   });
 });
