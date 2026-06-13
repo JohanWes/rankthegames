@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useGame } from "@/hooks/useGame";
 import { useBeaconSubmit } from "@/hooks/useBeaconSubmit";
+import { getTournamentStageTitle } from "@/lib/bracket";
 import { warmRunPrefetch } from "@/lib/run-prefetch";
+import { BracketOverlay } from "@/components/BracketOverlay";
 import { GameCard, type GameCardState } from "@/components/GameCard";
 import { VsBanner } from "@/components/VsBanner";
 import { MobileCarousel } from "@/components/MobileCarousel";
@@ -62,6 +64,7 @@ function getCorrectId(leftGame: RunGame | null, rightGame: RunGame | null): stri
 export default function GamePage() {
   const game = useGame();
   const { submitRun, setRunParams, resetSubmission } = useBeaconSubmit();
+  const [isBracketOpen, setIsBracketOpen] = useState(false);
 
   const submittedForRunRef = useRef<string | null>(null);
 
@@ -80,11 +83,11 @@ export default function GamePage() {
 
   // Submit on game over or reset (completed run)
   useEffect(() => {
-    const shouldSubmit = game.phase === "GAME_OVER" || game.phase === "RESETTING";
+    const shouldSubmit = game.phase === "GAME_OVER" || game.phase === "TOURNAMENT_COMPLETE";
     if (shouldSubmit && game.runId && submittedForRunRef.current !== game.runId) {
       submittedForRunRef.current = game.runId;
 
-      if (game.phase === "RESETTING") {
+      if (game.phase === "TOURNAMENT_COMPLETE") {
         submitRun("max_rounds");
       } else {
         // streak matches selections length → all correct
@@ -100,9 +103,9 @@ export default function GamePage() {
     }
   }, [game.phase, game.runId, game.streak, game.selections.length, submitRun]);
 
-  // Prefetch next run while player is on the game over screen
+  // Prefetch next run while player is on a terminal screen
   useEffect(() => {
-    if (game.phase === "GAME_OVER") {
+    if (game.phase === "GAME_OVER" || game.phase === "TOURNAMENT_COMPLETE") {
       void warmRunPrefetch().catch(() => {});
     }
   }, [game.phase]);
@@ -144,10 +147,13 @@ export default function GamePage() {
   const pickedId = lastSelection?.pickedGameId ?? null;
   const correctId = getCorrectId(game.leftGame, game.rightGame);
   const showScores =
-    game.phase === "CORRECT" ||
     game.phase === "INCORRECT" ||
-    game.phase === "GAME_OVER" ||
-    game.phase === "TRANSITIONING";
+    game.phase === "GAME_OVER";
+  const championId =
+    game.phase === "TOURNAMENT_COMPLETE"
+      ? game.selections[game.selections.length - 1]?.pickedGameId
+      : null;
+  const champion = championId ? game.games[championId] ?? null : null;
 
   return (
     <div className="min-h-screen">
@@ -156,6 +162,16 @@ export default function GamePage() {
         previousStreak={game.previousStreak}
         highScore={game.highScore}
         isNewHighScore={game.isNewHighScore}
+        onOpenBracket={() => setIsBracketOpen(true)}
+      />
+
+      <BracketOverlay
+        open={isBracketOpen}
+        onClose={() => setIsBracketOpen(false)}
+        games={game.games}
+        openingPairs={game.roundPairs}
+        selections={game.selections}
+        currentRound={game.currentRound}
       />
 
       {/* Game area */}
@@ -223,9 +239,36 @@ export default function GamePage() {
 
       <ScreenFlash type={getFlashType(game.phase)} />
 
+      <AnimatePresence>
+        {game.phase === "ROUND_INTRO" && (
+          <motion.div
+            className="fixed inset-0 z-40 flex items-center justify-center bg-bg-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="text-center"
+              initial={{ scale: 0.9, y: 18, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 1.04, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 22 }}
+            >
+              <p className="text-sm font-semibold uppercase tracking-[0.35em] text-accent">
+                Tournament
+              </p>
+              <h2 className="mt-2 font-display text-6xl font-bold text-text-primary glow-accent-text sm:text-8xl">
+                {getTournamentStageTitle(game.currentRound)}
+              </h2>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <ResetPopup
-        visible={game.phase === "RESETTING"}
+        visible={game.phase === "TOURNAMENT_COMPLETE"}
         streak={game.streak}
+        championName={champion?.name ?? "Champion"}
         onComplete={handleResetContinue}
       />
 
@@ -234,6 +277,16 @@ export default function GamePage() {
           streak={game.streak}
           highScore={game.highScore}
           isNewHighScore={game.isNewHighScore}
+          lostMatch={
+            game.leftGame && game.rightGame
+              ? {
+                  leftName: game.leftGame.name,
+                  leftScore: game.leftGame.snapshotScore,
+                  rightName: game.rightGame.name,
+                  rightScore: game.rightGame.snapshotScore
+                }
+              : null
+          }
           onPlayAgain={handlePlayAgain}
         />
       )}

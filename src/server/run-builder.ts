@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { OPENING_BRACKET_ROUNDS } from "../lib/bracket.ts";
 import { getGamesCollection } from "./collections.ts";
 
 const LADDER_SNAPSHOT_TTL_MS = 180_000;
-export const MAX_RUN_ROUNDS = 20;
+export const MAX_RUN_ROUNDS = 15;
 const SELECTION_POOL_SIZE = 20;
 const FAMILIAR_SEED_RANK_MAX = 500;
 const DEEP_CUT_SEED_RANK_MIN = 650;
@@ -10,7 +11,7 @@ const DISCOVERY_APPEARANCE_ROUNDS = new Set([5, 8, 11, 14, 16]);
 const MAX_DEEP_CUT_VS_DEEP_CUT_ROUNDS = 1;
 const OPENING_BUCKET_LABEL = "cluster:opening";
 
-export const RUN_BAND_MODEL = "balanced_fixed_pairs.v1";
+export const RUN_BAND_MODEL = "balanced_tournament_bracket.v1";
 
 export type ScoreBasedParams = {
   coreScoreRadius: number;
@@ -349,7 +350,7 @@ export function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition
   let deepCutVsDeepCutRounds = 0;
   const roundPairs: RunRoundPair[] = [];
 
-  for (let round = 1; round <= MAX_RUN_ROUNDS; round += 1) {
+  for (let round = 1; round <= OPENING_BRACKET_ROUNDS; round += 1) {
     const pair = pickRoundPair({
       round,
       games: snapshot.games,
@@ -377,11 +378,7 @@ export function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition
     new Set(roundPairs.flatMap((pair) => [pair.leftGameId, pair.rightGameId]))
   );
   const initialPair = roundPairs[0];
-  const challengerQueue = roundPairs.slice(1).map((pair) => ({
-    round: pair.round,
-    gameId: pair.rightGameId,
-    bucket: pair.bucket
-  }));
+  const challengerQueue: BuiltRunDefinition["challengerQueue"] = [];
 
   const games = Object.fromEntries(
     issuedGameIds.map((gameId) => {

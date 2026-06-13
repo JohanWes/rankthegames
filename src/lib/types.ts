@@ -89,10 +89,12 @@ export type LeaderboardResponse = {
 export type GameState =
   | "LOADING"
   | "READY"
+  | "ROUND_INTRO"
   | "AWAITING_CHOICE"
   | "REVEALING"
   | "CORRECT"
   | "INCORRECT"
   | "TRANSITIONING"
   | "RESETTING"
+  | "TOURNAMENT_COMPLETE"
   | "GAME_OVER";

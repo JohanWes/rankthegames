@@ -8,10 +8,11 @@ const RESET_DISPLAY_MS = 1000;
 type ResetPopupProps = {
   visible: boolean;
   streak: number;
+  championName: string;
   onComplete: () => void;
 };
 
-export function ResetPopup({ visible, streak, onComplete }: ResetPopupProps) {
+export function ResetPopup({ visible, streak, championName, onComplete }: ResetPopupProps) {
   useEffect(() => {
     if (!visible) return;
     const timer = setTimeout(onComplete, RESET_DISPLAY_MS);
@@ -57,14 +58,23 @@ export function ResetPopup({ visible, streak, onComplete }: ResetPopupProps) {
             <h2
               className="font-display text-8xl font-bold tracking-wider text-accent glow-accent-text sm:text-9xl"
             >
-              RESET!
+              CHAMPION!
             </h2>
 
             <motion.p
-              className="mt-2 font-display text-3xl font-bold text-text-primary"
+              className="mt-2 max-w-[80vw] text-center font-display text-3xl font-bold text-text-primary"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15, duration: 0.3 }}
+            >
+              {championName}
+            </motion.p>
+
+            <motion.p
+              className="mt-1 font-display text-2xl font-bold text-accent"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25, duration: 0.3 }}
             >
               {streak} streak
             </motion.p>

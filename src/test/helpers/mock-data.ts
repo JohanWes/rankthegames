@@ -19,53 +19,30 @@ function createGame(overrides: Partial<RunGame> & { id: string }): RunGame {
 /**
  * Create a deterministic mock run response.
  *
- * Default: 21 games (initial pair + 19 challengers).
- * Left game (g1) has score 600, right game (g2) has score 500.
- * Challengers have descending scores from 490 to 310.
+ * Default: 16 games in 8 opening bracket pairs.
+ * Scores descend from g1 so repeatedly choosing the higher-seeded visible game
+ * can complete the bracket.
  */
 export function createMockRunResponse(
   overrides?: Partial<CreateRunResponse>
 ): CreateRunResponse {
-  const leftGame = createGame({ id: "g1", name: "Game One", snapshotScore: 600, seedRank: 1 });
-  const rightGame = createGame({ id: "g2", name: "Game Two", snapshotScore: 500, seedRank: 2 });
-
-  const challengerIds = Array.from({ length: 19 }, (_, i) => `g${i + 3}`);
-  const challengers = challengerIds.map((id, i) =>
+  const gameList = Array.from({ length: 16 }, (_, index) =>
     createGame({
-      id,
-      name: `Game ${id.toUpperCase()}`,
-      snapshotScore: 490 - i * 10,
-      seedRank: i + 3
+      id: `g${index + 1}`,
+      name: index === 0 ? "Game One" : index === 1 ? "Game Two" : `Game G${index + 1}`,
+      snapshotScore: 600 - index * 10,
+      seedRank: index + 1
     })
   );
 
-  const games: Record<string, RunGame> = {
-    [leftGame.id]: leftGame,
-    [rightGame.id]: rightGame
-  };
-  for (const c of challengers) {
-    games[c.id] = c;
-  }
-
-  const challengerQueue = challengerIds.map((id, i) => ({
-    round: i + 2,
-    gameId: id,
-    bucket: `${10 + i * 10}-${20 + i * 10}`
+  const games = Object.fromEntries(gameList.map((game) => [game.id, game]));
+  const challengerQueue: CreateRunResponse["challengerQueue"] = [];
+  const roundPairs = Array.from({ length: 8 }, (_, index) => ({
+    round: index + 1,
+    leftGameId: `g${index * 2 + 1}`,
+    rightGameId: `g${index * 2 + 2}`,
+    bucket: "bracket:opening"
   }));
-  const roundPairs = [
-    {
-      round: 1,
-      leftGameId: "g1",
-      rightGameId: "g2",
-      bucket: "warmup:recognizable"
-    },
-    ...challengerQueue.map((challenger) => ({
-      round: challenger.round,
-      leftGameId: "g1",
-      rightGameId: challenger.gameId,
-      bucket: challenger.bucket
-    }))
-  ];
 
   return {
     runId: "test-run-001",
@@ -74,8 +51,8 @@ export function createMockRunResponse(
     expiresAt: "2024-01-01T00:15:00.000Z",
     bandModel: "percentile.v1",
     initialPair: {
-      leftGameId: "g1",
-      rightGameId: "g2"
+      leftGameId: roundPairs[0].leftGameId,
+      rightGameId: roundPairs[0].rightGameId
     },
     challengerQueue,
     roundPairs,

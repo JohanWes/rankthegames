@@ -1,5 +1,6 @@
 import { ObjectId, MongoServerError, type AnyBulkWriteOperation } from "mongodb";
 import { z } from "zod";
+import { getBracketRoundPair } from "../lib/bracket.ts";
 import { withMongoSession } from "../lib/mongodb.ts";
 import {
   getCollections,
@@ -339,7 +340,11 @@ function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenP
   for (let index = 0; index < selections.length; index += 1) {
     const selection = selections[index];
     const expectedRound = index + 1;
-    const issuedPair = tokenPayload.roundPairs.find((pair) => pair.round === selection.round);
+    const issuedPair = getBracketRoundPair(
+      selection.round,
+      tokenPayload.roundPairs,
+      selections.slice(0, index)
+    );
 
     if (selection.round !== expectedRound) {
       throw new RunCompletionValidationError(
@@ -351,7 +356,7 @@ function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenP
     if (!issuedPair) {
       throw new RunTokenValidationError(
         "invalid_run_token",
-        `Issued run token is missing the pair for round ${selection.round}.`
+        `Issued run token is missing the bracket pair for round ${selection.round}.`
       );
     }
 

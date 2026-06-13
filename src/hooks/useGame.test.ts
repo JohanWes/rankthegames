@@ -33,6 +33,27 @@ afterEach(() => {
   resetRunPrefetchForTests();
 });
 
+async function playCurrentCorrectRound(result: { current: ReturnType<typeof useGame> }) {
+  const leftGame = result.current.leftGame;
+  const rightGame = result.current.rightGame;
+
+  if (!leftGame || !rightGame) {
+    throw new Error("Cannot play a round without two games.");
+  }
+
+  const pickedGameId =
+    leftGame.snapshotScore >= rightGame.snapshotScore ? leftGame.id : rightGame.id;
+
+  act(() => result.current.selectGame(pickedGameId));
+  await act(async () => await vi.advanceTimersByTimeAsync(900));
+  await act(async () => await vi.advanceTimersByTimeAsync(1100));
+  await act(async () => await vi.advanceTimersByTimeAsync(500));
+
+  if (result.current.phase === "ROUND_INTRO") {
+    await act(async () => await vi.advanceTimersByTimeAsync(1200));
+  }
+}
+
 describe("useGame", () => {
   it("starts in LOADING state", () => {
     global.fetch = vi.fn().mockReturnValue(new Promise(() => {})); // never resolves
@@ -107,9 +128,9 @@ describe("useGame", () => {
     expect(result.current.phase).toBe("AWAITING_CHOICE");
     expect(result.current.currentRound).toBe(2);
 
-    // Fixed schedule: the next issued pair is shown.
-    expect(result.current.leftGame?.id).toBe("g1");
-    expect(result.current.rightGame?.id).toBe("g3");
+    // Opening bracket round 2 is the next issued opening pair.
+    expect(result.current.leftGame?.id).toBe("g3");
+    expect(result.current.rightGame?.id).toBe("g4");
   });
 
   it("incorrect pick flows through REVEALING → INCORRECT → GAME_OVER", async () => {
@@ -153,9 +174,9 @@ describe("useGame", () => {
     await act(async () => await vi.advanceTimersByTimeAsync(1100));
     await act(async () => await vi.advanceTimersByTimeAsync(500));
 
-    // Round 2: g1 (600) vs g3 (490). Pick g1 (correct)
-    expect(result.current.leftGame?.id).toBe("g1");
-    act(() => result.current.selectGame("g1"));
+    // Round 2: g3 (580) vs g4 (570). Pick g3 (correct)
+    expect(result.current.leftGame?.id).toBe("g3");
+    act(() => result.current.selectGame("g3"));
     await act(async () => await vi.advanceTimersByTimeAsync(900));
     expect(result.current.streak).toBe(2);
     await act(async () => await vi.advanceTimersByTimeAsync(1100));
@@ -234,7 +255,7 @@ describe("useGame", () => {
     expect(result.current.error).toBe("Server error");
   });
 
-  it("goes to RESETTING after completing all 20 rounds correctly", async () => {
+  it("goes to TOURNAMENT_COMPLETE after completing all 15 bracket rounds correctly", async () => {
     mockFetchSuccess();
     const { result } = renderHook(() => useGame());
 
@@ -242,19 +263,12 @@ describe("useGame", () => {
       await vi.runAllTimersAsync();
     });
 
-    // Play 20 correct rounds (always pick g1, which has the highest score)
-    for (let round = 1; round <= 20; round++) {
-      act(() => result.current.selectGame("g1"));
-      await act(async () => await vi.advanceTimersByTimeAsync(900)); // REVEAL_DONE → CORRECT
-
-      // After CORRECT, wait for TRANSITION_DONE and SWAP_DONE
-      // For round 20, SWAP_DONE will transition to RESETTING
-      await act(async () => await vi.advanceTimersByTimeAsync(1100)); // TRANSITION_DONE
-      await act(async () => await vi.advanceTimersByTimeAsync(500)); // SWAP_DONE
+    for (let round = 1; round <= 15; round++) {
+      await playCurrentCorrectRound(result);
     }
 
-    expect(result.current.phase).toBe("RESETTING");
-    expect(result.current.streak).toBe(20);
+    expect(result.current.phase).toBe("TOURNAMENT_COMPLETE");
+    expect(result.current.streak).toBe(15);
   });
 
   it("continueAfterReset preserves streak and loads new run", async () => {
@@ -265,19 +279,12 @@ describe("useGame", () => {
       await vi.runAllTimersAsync();
     });
 
-    // Play through all 20 rounds
-    for (let round = 1; round <= 20; round++) {
-      act(() => result.current.selectGame("g1"));
-      await act(async () => await vi.advanceTimersByTimeAsync(900)); // REVEAL_DONE → CORRECT
-
-      // After CORRECT, wait for TRANSITION_DONE and SWAP_DONE
-      // For round 20, SWAP_DONE will transition to RESETTING
-      await act(async () => await vi.advanceTimersByTimeAsync(1100));
-      await act(async () => await vi.advanceTimersByTimeAsync(500));
+    for (let round = 1; round <= 15; round++) {
+      await playCurrentCorrectRound(result);
     }
 
-    expect(result.current.phase).toBe("RESETTING");
-    expect(result.current.streak).toBe(20);
+    expect(result.current.phase).toBe("TOURNAMENT_COMPLETE");
+    expect(result.current.streak).toBe(15);
 
     // Continue after reset with a new run
     const newRun = createMockRunResponse({ runId: "test-run-002" });
@@ -292,7 +299,7 @@ describe("useGame", () => {
     });
 
     expect(result.current.phase).toBe("AWAITING_CHOICE");
-    expect(result.current.streak).toBe(20); // Streak preserved
+    expect(result.current.streak).toBe(15); // Streak preserved
     expect(result.current.currentRound).toBe(1); // Round reset
     expect(result.current.runId).toBe("test-run-002");
   });

@@ -9,12 +9,17 @@ import type {
   RunSelection,
   CreateRunResponse
 } from "@/lib/types";
+import {
+  getBracketRoundPair,
+  MAX_TOURNAMENT_ROUNDS,
+  shouldShowStageIntro
+} from "@/lib/bracket";
 import { consumeWarmRun } from "@/lib/run-prefetch";
 
-const MAX_ROUNDS = 20;
 const REVEAL_DELAY_MS = 900;
 const TRANSITION_DELAY_MS = 1100;
 const SWAP_DELAY_MS = 250;
+const STAGE_INTRO_DELAY_MS = 1200;
 const HIGH_SCORE_KEY = "rankthegames_highscore";
 
 // ---------------------------------------------------------------------------
@@ -49,6 +54,7 @@ type Action =
   | { type: "REVEAL_DONE"; wasCorrect: boolean }
   | { type: "TRANSITION_DONE" }
   | { type: "SWAP_DONE" }
+  | { type: "STAGE_INTRO_DONE" }
   | { type: "PLAY_AGAIN" }
   | { type: "RESET_CONTINUE" };
 
@@ -97,9 +103,10 @@ function getIssuedRoundPairs(payload: CreateRunResponse): RunPair[] {
 function getRoundPairGames(
   games: Record<string, RunGame>,
   roundPairs: RunPair[],
-  round: number
+  round: number,
+  selections: RunSelection[]
 ) {
-  const roundPair = roundPairs.find((pair) => pair.round === round);
+  const roundPair = getBracketRoundPair(round, roundPairs, selections);
 
   return {
     leftGame: roundPair ? games[roundPair.leftGameId] ?? null : null,
@@ -115,7 +122,7 @@ function reducer(state: State, action: Action): State {
     case "FETCH_SUCCESS": {
       const { payload, highScore } = action;
       const roundPairs = getIssuedRoundPairs(payload);
-      const { leftGame, rightGame } = getRoundPairGames(payload.games, roundPairs, 1);
+      const { leftGame, rightGame } = getRoundPairGames(payload.games, roundPairs, 1, []);
 
       return {
         ...getInitialState(),
@@ -141,7 +148,7 @@ function reducer(state: State, action: Action): State {
     case "FETCH_SUCCESS_CONTINUE": {
       const { payload } = action;
       const roundPairs = getIssuedRoundPairs(payload);
-      const { leftGame, rightGame } = getRoundPairGames(payload.games, roundPairs, 1);
+      const { leftGame, rightGame } = getRoundPairGames(payload.games, roundPairs, 1, []);
 
       return {
         ...getInitialState(),
@@ -229,25 +236,35 @@ function reducer(state: State, action: Action): State {
     case "SWAP_DONE": {
       if (state.phase !== "TRANSITIONING") return state;
 
-      if (state.currentRound >= MAX_ROUNDS) {
+      if (state.currentRound >= MAX_TOURNAMENT_ROUNDS) {
         return {
           ...state,
-          phase: "RESETTING"
+          phase: "TOURNAMENT_COMPLETE"
         };
       }
 
+      const nextRound = state.currentRound + 1;
       const { leftGame, rightGame } = getRoundPairGames(
         state.games,
         state.roundPairs,
-        state.currentRound + 1
+        nextRound,
+        state.selections
       );
 
       return {
         ...state,
-        phase: "AWAITING_CHOICE",
+        phase: shouldShowStageIntro(nextRound) ? "ROUND_INTRO" : "AWAITING_CHOICE",
         leftGame,
         rightGame,
-        currentRound: state.currentRound + 1
+        currentRound: nextRound
+      };
+    }
+
+    case "STAGE_INTRO_DONE": {
+      if (state.phase !== "ROUND_INTRO") return state;
+      return {
+        ...state,
+        phase: "AWAITING_CHOICE"
       };
     }
 
@@ -300,6 +317,7 @@ export function useGame(): UseGameReturn {
   const fetchRef = useRef(false);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stageIntroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchRun = useCallback(async () => {
     dispatch({ type: "FETCH_START" });
@@ -378,6 +396,18 @@ export function useGame(): UseGameReturn {
 
       return () => {
         if (swapTimerRef.current) clearTimeout(swapTimerRef.current);
+      };
+    }
+  }, [state.phase]);
+
+  useEffect(() => {
+    if (state.phase === "ROUND_INTRO") {
+      stageIntroTimerRef.current = setTimeout(() => {
+        dispatch({ type: "STAGE_INTRO_DONE" });
+      }, STAGE_INTRO_DELAY_MS);
+
+      return () => {
+        if (stageIntroTimerRef.current) clearTimeout(stageIntroTimerRef.current);
       };
     }
   }, [state.phase]);

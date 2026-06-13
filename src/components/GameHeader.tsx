@@ -8,13 +8,15 @@ type GameHeaderProps = {
   previousStreak: number;
   highScore: number;
   isNewHighScore: boolean;
+  onOpenBracket: () => void;
 };
 
 export function GameHeader({
   streak,
   previousStreak,
   highScore,
-  isNewHighScore
+  isNewHighScore,
+  onOpenBracket
 }: GameHeaderProps) {
   return (
     <header className="fixed inset-x-0 top-0 z-30 glass h-14 md:h-16">
@@ -34,9 +36,19 @@ export function GameHeader({
           isNewHighScore={isNewHighScore}
         />
 
-        {/* High score badge */}
-        <div className="rounded-full border border-white/10 px-3 py-1 text-sm font-semibold text-text-secondary">
-          HI: {highScore}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenBracket}
+            className="rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-sm font-semibold text-accent transition-colors hover:border-accent hover:bg-accent/20"
+          >
+            Bracket
+          </button>
+
+          {/* High score badge */}
+          <div className="rounded-full border border-white/10 px-3 py-1 text-sm font-semibold text-text-secondary">
+            HI: {highScore}
+          </div>
         </div>
       </div>
     </header>

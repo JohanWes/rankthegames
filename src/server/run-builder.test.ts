@@ -19,6 +19,7 @@ import {
   RUN_BAND_MODEL,
   type LadderSnapshot
 } from "./run-builder.ts";
+import { OPENING_BRACKET_ROUNDS } from "../lib/bracket.ts";
 
 function createSnapshot(): LadderSnapshot {
   const scores = [
@@ -143,13 +144,15 @@ describe("buildRunDefinition", () => {
     vi.restoreAllMocks();
   });
 
-  it("builds a fixed 20-pair run schedule", () => {
+  it("builds an 8-pair opening bracket for a 15-round tournament", () => {
     vi.spyOn(Math, "random").mockImplementation(() => 0);
 
     const run = buildRunDefinition(createSnapshot());
 
     expect(run.bandModel).toBe(RUN_BAND_MODEL);
-    expect(run.roundPairs).toHaveLength(MAX_RUN_ROUNDS);
+    expect(MAX_RUN_ROUNDS).toBe(15);
+    expect(run.roundPairs).toHaveLength(OPENING_BRACKET_ROUNDS);
+    expect(run.gameIds).toHaveLength(16);
     expect(run.initialPair).toEqual({
       leftGameId: run.roundPairs[0].leftGameId,
       rightGameId: run.roundPairs[0].rightGameId
@@ -202,18 +205,6 @@ describe("buildRunDefinition", () => {
       const right = gamesById.get(pair.rightGameId)!;
       expect(left.seedRank <= 500 || right.seedRank <= 500).toBe(true);
     }
-  });
-
-  it("ends with a top one percent boss game", () => {
-    vi.spyOn(Math, "random").mockImplementation(() => 0);
-
-    const snapshot = createLargeSnapshot();
-    const run = buildRunDefinition(snapshot);
-    const finalPair = run.roundPairs[MAX_RUN_ROUNDS - 1];
-    const topIds = new Set(snapshot.games.slice(0, Math.ceil(snapshot.games.length * 0.01)).map((game) => game.id));
-
-    expect(finalPair.bucket).toBe("final:top-1-percent");
-    expect(topIds.has(finalPair.leftGameId) || topIds.has(finalPair.rightGameId)).toBe(true);
   });
 
   it("randomizes fixed pair side placement", () => {

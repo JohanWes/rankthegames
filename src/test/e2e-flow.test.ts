@@ -73,29 +73,31 @@ describe("End-to-end gameplay flow", () => {
     expect(result.current.phase).toBe("AWAITING_CHOICE");
     expect(result.current.streak).toBe(1);
     expect(result.current.currentRound).toBe(2);
-    expect(result.current.leftGame?.id).toBe("g1");
-    expect(result.current.rightGame?.id).toBe("g3");
+    expect(result.current.leftGame?.id).toBe("g3");
+    expect(result.current.rightGame?.id).toBe("g4");
 
-    // --- Round 2: correct pick (g1 score 600 >= g3 score 490) ---
-    act(() => result.current.selectGame("g1"));
+    // --- Round 2: correct pick (g3 score 580 >= g4 score 570) ---
+    act(() => result.current.selectGame("g3"));
     await act(async () => await vi.advanceTimersByTimeAsync(900));
     await act(async () => await vi.advanceTimersByTimeAsync(1100));
     await act(async () => await vi.advanceTimersByTimeAsync(500));
     expect(result.current.streak).toBe(2);
     expect(result.current.currentRound).toBe(3);
-    expect(result.current.rightGame?.id).toBe("g4");
+    expect(result.current.leftGame?.id).toBe("g5");
+    expect(result.current.rightGame?.id).toBe("g6");
 
-    // --- Round 3: correct pick (g1 score 600 >= g4 score 460) ---
-    act(() => result.current.selectGame("g1"));
+    // --- Round 3: correct pick (g5 score 560 >= g6 score 550) ---
+    act(() => result.current.selectGame("g5"));
     await act(async () => await vi.advanceTimersByTimeAsync(900));
     await act(async () => await vi.advanceTimersByTimeAsync(1100));
     await act(async () => await vi.advanceTimersByTimeAsync(500));
     expect(result.current.streak).toBe(3);
     expect(result.current.currentRound).toBe(4);
-    expect(result.current.rightGame?.id).toBe("g5");
+    expect(result.current.leftGame?.id).toBe("g7");
+    expect(result.current.rightGame?.id).toBe("g8");
 
-    // --- Round 4: wrong pick (g5 score 450 < g1 score 600) ---
-    act(() => result.current.selectGame("g5"));
+    // --- Round 4: wrong pick (g8 score 530 < g7 score 540) ---
+    act(() => result.current.selectGame("g8"));
     await act(async () => await vi.advanceTimersByTimeAsync(900));
     expect(result.current.phase).toBe("INCORRECT");
 
@@ -110,7 +112,7 @@ describe("End-to-end gameplay flow", () => {
     expect(selections[1].round).toBe(2);
     expect(selections[2].round).toBe(3);
     expect(selections[3].round).toBe(4);
-    expect(selections[3].pickedGameId).toBe("g5");
+    expect(selections[3].pickedGameId).toBe("g8");
 
     // Verify rounds are contiguous
     for (let i = 0; i < selections.length; i++) {

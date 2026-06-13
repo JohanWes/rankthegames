@@ -6,6 +6,12 @@ type GameOverModalProps = {
   streak: number;
   highScore: number;
   isNewHighScore: boolean;
+  lostMatch?: {
+    leftName: string;
+    leftScore: number;
+    rightName: string;
+    rightScore: number;
+  } | null;
   onPlayAgain: () => void;
 };
 
@@ -13,6 +19,7 @@ export function GameOverModal({
   streak,
   highScore,
   isNewHighScore,
+  lostMatch = null,
   onPlayAgain
 }: GameOverModalProps) {
   return (
@@ -46,6 +53,28 @@ export function GameOverModal({
         <p className="mt-4 text-text-secondary">
           Best: <span className="font-semibold text-text-primary">{highScore}</span>
         </p>
+
+        {lostMatch && (
+          <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">
+              Revealed MMR
+            </p>
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <span className="truncate text-text-secondary">{lostMatch.leftName}</span>
+                <span className="font-display text-xl font-bold text-text-primary">
+                  {lostMatch.leftScore}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="truncate text-text-secondary">{lostMatch.rightName}</span>
+                <span className="font-display text-xl font-bold text-text-primary">
+                  {lostMatch.rightScore}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Play again */}
         <button
