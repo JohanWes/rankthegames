@@ -5,7 +5,7 @@ export const MAX_TOURNAMENT_ROUNDS = 15;
 
 export type TournamentStage = "round-of-16" | "quarterfinal" | "semifinal" | "final";
 
-const ADVANCEMENT_ROUNDS: Record<number, [number, number]> = {
+export const ADVANCEMENT_ROUNDS: Record<number, [number, number]> = {
   9: [1, 2],
   10: [3, 4],
   11: [5, 6],
