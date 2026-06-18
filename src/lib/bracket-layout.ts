@@ -38,7 +38,7 @@ export type BracketConnector = {
 
 export type FocusPoint = { x: number; y: number };
 
-type FlatNode = Pick<BracketNode, "key" | "round" | "gameId" | "eliminated" | "active" | "winner" | "x" | "y">;
+export type FlatNode = Pick<BracketNode, "key" | "round" | "gameId" | "eliminated" | "active" | "winner" | "x" | "y">;
 
 function nodeToFlat(node: BracketNode): FlatNode {
   return {

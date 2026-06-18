@@ -13,7 +13,7 @@ import {
   WORLD_HEIGHT,
   MAX_ZOOM,
   getCoverUrl,
-  type BracketNode
+  type FlatNode
 } from "@/lib/bracket-layout";
 import { useBracketCamera } from "@/hooks/useBracketCamera";
 import type { RunGame, RunPair, RunSelection } from "@/lib/types";
@@ -37,7 +37,7 @@ type BracketOverlayProps = {
   currentRound: number;
 };
 
-function Miniature({ node, game }: { node: BracketNode; game: RunGame }) {
+function Miniature({ node, game }: { node: FlatNode; game: RunGame }) {
   const coverUrl = getCoverUrl(game);
 
   return (
@@ -92,7 +92,7 @@ function Miniature({ node, game }: { node: BracketNode; game: RunGame }) {
   );
 }
 
-function EmptySlot({ node }: { node: BracketNode }) {
+function EmptySlot({ node }: { node: FlatNode }) {
   return (
     <div
       className={[
