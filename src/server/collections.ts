@@ -92,8 +92,6 @@ export type AppCollections = {
   rateLimits: Collection<RateLimitDoc>;
 };
 
-const indexBuildsByDatabase = new Map<string, Promise<void>>();
-
 export function getCollections(db: Db): AppCollections {
   return {
     games: db.collection<GameDoc>(COLLECTION_NAMES.games),
@@ -111,39 +109,7 @@ export async function getGamesCollection(db?: Db) {
   return (await getAppCollections(db)).games;
 }
 
-export async function getMatchEventsCollection(db?: Db) {
-  return (await getAppCollections(db)).matchEvents;
-}
-
-export async function getRunSubmissionsCollection(db?: Db) {
-  return (await getAppCollections(db)).runSubmissions;
-}
-
-export async function getRateLimitsCollection(db?: Db) {
-  return (await getAppCollections(db)).rateLimits;
-}
-
-export async function ensureCoreIndexes(db?: Db): Promise<void> {
-  const resolvedDb = db ?? (await getDb());
-  const existingPromise = indexBuildsByDatabase.get(resolvedDb.databaseName);
-
-  if (existingPromise) {
-    await existingPromise;
-    return;
-  }
-
-  const buildPromise = createCoreIndexes(resolvedDb);
-  indexBuildsByDatabase.set(resolvedDb.databaseName, buildPromise);
-
-  try {
-    await buildPromise;
-  } catch (error) {
-    indexBuildsByDatabase.delete(resolvedDb.databaseName);
-    throw error;
-  }
-}
-
-async function createCoreIndexes(db: Db) {
+export async function ensureCoreIndexes(db: Db): Promise<void> {
   const collections = getCollections(db);
 
   await Promise.all([

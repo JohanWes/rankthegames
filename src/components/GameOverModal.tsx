@@ -23,10 +23,15 @@ export function GameOverModal({
   onPlayAgain
 }: GameOverModalProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="game-over-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay"
+    >
       <div className="glass mx-4 w-full max-w-md rounded-3xl p-8 text-center">
         {/* Title */}
-        <h2 className="font-display text-5xl font-bold text-wrong">
+        <h2 id="game-over-title" className="font-display text-5xl font-bold text-wrong">
           GAME OVER
         </h2>
 
@@ -80,6 +85,7 @@ export function GameOverModal({
         <button
           type="button"
           onClick={onPlayAgain}
+          autoFocus
           className="mt-8 w-full rounded-full border border-accent/60 bg-accent/10 px-8 py-3 font-display text-xl font-bold text-accent transition-all hover:bg-accent/20 hover:border-accent"
         >
           PLAY AGAIN

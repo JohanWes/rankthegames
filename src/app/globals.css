@@ -58,7 +58,7 @@ html::before {
   pointer-events: none;
 }
 
-/* Floating geometric shapes */
+/* Static ambient shapes (not animated: they sit under backdrop-blur elements) */
 html::after {
   content: "";
   position: fixed;
@@ -74,13 +74,6 @@ html::after {
     /* Top-left glow */
     radial-gradient(ellipse 80px 80px at 5% 10%, rgba(168, 85, 247, 0.04) 50%, transparent 70%);
   pointer-events: none;
-  animation: float-shapes 25s ease-in-out infinite;
-}
-
-@keyframes float-shapes {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(10px, -15px) scale(1.02); }
-  66% { transform: translate(-8px, 10px) scale(0.98); }
 }
 
 /* Glassmorphism utility */
@@ -91,21 +84,7 @@ html::after {
   border: 1px solid rgba(240, 246, 252, 0.08);
 }
 
-/* Neon glow utilities — text-shadow variants */
-.neon-glow-cyan {
-  text-shadow:
-    0 0 7px rgba(0, 240, 255, 0.5),
-    0 0 20px rgba(0, 240, 255, 0.3),
-    0 0 40px rgba(0, 240, 255, 0.15);
-}
-
-/* Neon glow utilities — box-shadow variant */
-.neon-glow-cyan-box {
-  box-shadow:
-    0 0 8px rgba(0, 240, 255, 0.3),
-    0 0 20px rgba(0, 240, 255, 0.15);
-}
-
+/* Neon glow utilities — box-shadow variants */
 .neon-glow-green {
   box-shadow:
     0 0 8px var(--color-correct-glow),
@@ -155,6 +134,10 @@ a {
   text-decoration: none;
 }
 
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Screen flash animations — split by result type */
 @keyframes flash-correct {
   0% { opacity: 0.15; }
@@ -174,27 +157,23 @@ a {
   animation: flash-incorrect 300ms ease-out forwards;
 }
 
-/* Landing page slide-up entrance */
+/* Landing page slide-up entrance (CSS-only so it runs before hydration).
+   `backwards` fill hides items during their delay without leaving a transform behind. */
 @keyframes slide-up {
-  0% {
+  from {
     opacity: 0;
-    transform: translateY(24px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
+    transform: translateY(24px) scale(0.96);
   }
 }
 
 .animate-slide-up {
-  animation: slide-up 0.6s ease-out both;
+  animation: slide-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .animate-slide-up-1 { animation-delay: 0ms; }
-.animate-slide-up-2 { animation-delay: 150ms; }
-.animate-slide-up-3 { animation-delay: 300ms; }
-.animate-slide-up-4 { animation-delay: 500ms; }
-.animate-slide-up-5 { animation-delay: 700ms; }
+.animate-slide-up-2 { animation-delay: 120ms; }
+.animate-slide-up-3 { animation-delay: 240ms; }
+.animate-slide-up-4 { animation-delay: 360ms; }
 
 /* Accessibility: respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
@@ -204,7 +183,7 @@ a {
     transition-duration: 0.01ms !important;
   }
 
-  html::before {
+  .animate-slide-up {
     animation: none;
   }
 }

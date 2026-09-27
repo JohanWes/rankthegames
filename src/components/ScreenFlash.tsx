@@ -20,7 +20,7 @@ export function ScreenFlash({ type }: ScreenFlashProps) {
 
   return (
     <div
-      key={`${type}-${Date.now()}`}
+      key={type}
       className={`pointer-events-none fixed inset-0 z-40 ${animClass}`}
       style={{ background: gradient }}
       aria-hidden="true"

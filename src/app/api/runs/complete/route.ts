@@ -1,51 +1,37 @@
 import { ZodError } from "zod";
-import { RateLimitExceededError } from "@/server/rate-limit.ts";
-import {
-  completeRunRequestSchema,
-  completeRunSubmissionWithMetrics,
-  DuplicateRunSubmissionError,
-  RunCompletionValidationError,
-  RunTokenValidationError
-} from "@/server/run-completion.ts";
 import {
   applyRateLimitHeaders,
   createErrorResponse,
   createJsonResponse,
-  createNoStoreHeaders,
-  enforceRequestRateLimit
+  createNoStoreHeaders
 } from "@/server/api-response.ts";
 import { getRequestIpHash } from "@/server/ip-hash.ts";
+import { enforceRateLimit, RateLimitExceededError } from "@/server/rate-limit.ts";
+import {
+  completeRunRequestSchema,
+  completeRunSubmission,
+  DuplicateRunSubmissionError,
+  RunCompletionValidationError,
+  RunTokenValidationError
+} from "@/server/run-completion.ts";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const headers = createNoStoreHeaders();
-  const requestStartedAt = performance.now();
+  const startedAt = performance.now();
 
   try {
-    const parseStartedAt = performance.now();
     const body = await parseRequestBody(request);
-    const parseBodyMs = Math.round(performance.now() - parseStartedAt);
-    const rateLimitStartedAt = performance.now();
-    const rateLimit = await enforceRequestRateLimit(request, "/api/runs/complete");
-    const rateLimitMs = Math.round(performance.now() - rateLimitStartedAt);
+    const ipHash = getRequestIpHash(request);
+    const rateLimit = await enforceRateLimit({ route: "/api/runs/complete", key: ipHash });
     applyRateLimitHeaders(headers, rateLimit);
 
-    const completionStartedAt = performance.now();
-    const { response, metrics } = await completeRunSubmissionWithMetrics(
-      body,
-      getRequestIpHash(request) ?? "ip:unknown"
-    );
-    const completeRunMs = Math.round(performance.now() - completionStartedAt);
+    const response = await completeRunSubmission(body, ipHash);
 
     console.info("Completed run.", {
-      parseBodyMs,
-      rateLimitMs,
-      completeRunMs,
-      transactionMs: metrics.transactionMs,
-      touchedGameCount: metrics.touchedGameCount,
-      submittedRoundCount: metrics.submittedRoundCount,
-      totalMs: Math.round(performance.now() - requestStartedAt)
+      roundsAccepted: response.roundsAccepted,
+      totalMs: Math.round(performance.now() - startedAt)
     });
 
     return createJsonResponse(response, {

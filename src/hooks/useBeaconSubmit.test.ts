@@ -7,9 +7,7 @@ const baseParams = {
   signedRunToken: "token-abc",
   selections: [
     { round: 1, pickedGameId: "g1", completedAt: "2024-01-01T00:00:01.000Z" }
-  ],
-  endedReason: "abandoned" as const,
-  startedAt: Date.now() - 5000
+  ]
 };
 
 beforeEach(() => {
@@ -35,14 +33,15 @@ describe("useBeaconSubmit", () => {
     });
 
     await act(async () => {
-      await result.current.submitRun("wrong_guess");
+      await result.current.submitRun();
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/runs/complete",
       expect.objectContaining({
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json" },
+        keepalive: true
       })
     );
 
@@ -51,9 +50,8 @@ describe("useBeaconSubmit", () => {
     );
     expect(callBody.runId).toBe("run-123");
     expect(callBody.signedRunToken).toBe("token-abc");
-    expect(callBody.endedReason).toBe("wrong_guess");
     expect(callBody.selections).toHaveLength(1);
-    expect(typeof callBody.clientRunDurationMs).toBe("number");
+    expect(callBody).not.toHaveProperty("endedReason");
   });
 
   it("does not double-submit", async () => {
@@ -64,10 +62,10 @@ describe("useBeaconSubmit", () => {
     });
 
     await act(async () => {
-      await result.current.submitRun("wrong_guess");
+      await result.current.submitRun();
     });
     await act(async () => {
-      await result.current.submitRun("wrong_guess");
+      await result.current.submitRun();
     });
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -81,7 +79,7 @@ describe("useBeaconSubmit", () => {
     });
 
     await act(async () => {
-      await result.current.submitRun("wrong_guess");
+      await result.current.submitRun();
     });
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
@@ -91,27 +89,35 @@ describe("useBeaconSubmit", () => {
     });
 
     await act(async () => {
-      await result.current.submitRun("max_rounds");
+      await result.current.submitRun();
     });
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("registers and cleans up visibility listeners", () => {
-    const addSpy = vi.spyOn(document, "addEventListener");
-    const removeSpy = vi.spyOn(document, "removeEventListener");
+  it("beacons the partial run on pagehide and does not resubmit", async () => {
+    const { result } = renderHook(() => useBeaconSubmit());
 
-    const { unmount } = renderHook(() => useBeaconSubmit());
+    act(() => {
+      result.current.setRunParams(baseParams);
+    });
 
-    expect(addSpy).toHaveBeenCalledWith(
-      "visibilitychange",
-      expect.any(Function)
-    );
+    window.dispatchEvent(new Event("pagehide"));
+    expect(navigator.sendBeacon).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await result.current.submitRun();
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("beacons an unsubmitted run on unmount", () => {
+    const { result, unmount } = renderHook(() => useBeaconSubmit());
+
+    act(() => {
+      result.current.setRunParams(baseParams);
+    });
 
     unmount();
-
-    expect(removeSpy).toHaveBeenCalledWith(
-      "visibilitychange",
-      expect.any(Function)
-    );
+    expect(navigator.sendBeacon).toHaveBeenCalledTimes(1);
   });
 });

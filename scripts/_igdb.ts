@@ -44,9 +44,18 @@ export function steamCoverUrl(appId: number) {
   return `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appId}/library_600x900_2x.jpg`;
 }
 
+function getIgdbCredentials() {
+  if (!env.IGDB_CLIENT_ID || !env.IGDB_CLIENT_SECRET) {
+    throw new Error("IGDB_CLIENT_ID and IGDB_CLIENT_SECRET must be set to use IGDB scripts.");
+  }
+
+  return { clientId: env.IGDB_CLIENT_ID, clientSecret: env.IGDB_CLIENT_SECRET };
+}
+
 export async function fetchTwitchAccessToken() {
-  const clientId = env.TWITCH_CLIENT_ID?.trim() || env.IGDB_CLIENT_ID;
-  const clientSecret = env.TWITCH_CLIENT_SECRET?.trim() || env.IGDB_CLIENT_SECRET;
+  const igdb = getIgdbCredentials();
+  const clientId = env.TWITCH_CLIENT_ID?.trim() || igdb.clientId;
+  const clientSecret = env.TWITCH_CLIENT_SECRET?.trim() || igdb.clientSecret;
   const response = await fetch(TWITCH_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -89,7 +98,7 @@ export async function searchIgdbGame(
     method: "POST",
     headers: {
       Accept: "application/json",
-      "Client-ID": env.IGDB_CLIENT_ID,
+      "Client-ID": getIgdbCredentials().clientId,
       Authorization: `Bearer ${accessToken}`
     },
     body

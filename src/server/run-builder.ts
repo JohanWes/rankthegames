@@ -1,94 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { OPENING_BRACKET_ROUNDS } from "../lib/bracket.ts";
+import type { RunGame, RunPair } from "../lib/types.ts";
 import { getGamesCollection } from "./collections.ts";
 
 const LADDER_SNAPSHOT_TTL_MS = 180_000;
-export const MAX_RUN_ROUNDS = 15;
 const SELECTION_POOL_SIZE = 20;
+const CANDIDATE_POOL_SIZE = 60;
 const FAMILIAR_SEED_RANK_MAX = 500;
 const DEEP_CUT_SEED_RANK_MIN = 650;
-const DISCOVERY_APPEARANCE_ROUNDS = new Set([5, 8, 11, 14, 16]);
+const DISCOVERY_APPEARANCE_ROUNDS = new Set([5, 8]);
 const MAX_DEEP_CUT_VS_DEEP_CUT_ROUNDS = 1;
-const OPENING_BUCKET_LABEL = "cluster:opening";
-
-export const RUN_BAND_MODEL = "balanced_tournament_bracket.v1";
-
-export type ScoreBasedParams = {
-  coreScoreRadius: number;
-  maxCoreScoreRadius: number;
-  radiusExpansionStep: number;
-  startingPairMinGap: number;
-  startingPairMaxGap: number;
-  startingPairPreferredGap: number;
-};
-
-const TIER_BREAKPOINTS: Array<{ score: number; params: ScoreBasedParams }> = [
-  {
-    score: 400,
-    params: {
-      coreScoreRadius: 150,
-      maxCoreScoreRadius: 250,
-      radiusExpansionStep: 30,
-      startingPairMinGap: 80,
-      startingPairMaxGap: 300,
-      startingPairPreferredGap: 175
-    }
-  },
-  {
-    score: 700,
-    params: {
-      coreScoreRadius: 80,
-      maxCoreScoreRadius: 140,
-      radiusExpansionStep: 20,
-      startingPairMinGap: 60,
-      startingPairMaxGap: 150,
-      startingPairPreferredGap: 100
-    }
-  },
-  {
-    score: 900,
-    params: {
-      coreScoreRadius: 30,
-      maxCoreScoreRadius: 100,
-      radiusExpansionStep: 15,
-      startingPairMinGap: 10,
-      startingPairMaxGap: 40,
-      startingPairPreferredGap: 25
-    }
-  }
-];
-
-export function getScoreBasedParams(anchorScore: number): ScoreBasedParams {
-  const first = TIER_BREAKPOINTS[0];
-  const last = TIER_BREAKPOINTS[TIER_BREAKPOINTS.length - 1];
-
-  if (anchorScore <= first.score) return { ...first.params };
-  if (anchorScore >= last.score) return { ...last.params };
-
-  let lowerTier = first;
-  let upperTier = last;
-
-  for (let i = 0; i < TIER_BREAKPOINTS.length - 1; i++) {
-    if (anchorScore >= TIER_BREAKPOINTS[i].score && anchorScore <= TIER_BREAKPOINTS[i + 1].score) {
-      lowerTier = TIER_BREAKPOINTS[i];
-      upperTier = TIER_BREAKPOINTS[i + 1];
-      break;
-    }
-  }
-
-  const t = (anchorScore - lowerTier.score) / (upperTier.score - lowerTier.score);
-
-  const interpolate = (low: number, high: number) => Math.round(low + (high - low) * t);
-
-  return {
-    coreScoreRadius: interpolate(lowerTier.params.coreScoreRadius, upperTier.params.coreScoreRadius),
-    maxCoreScoreRadius: interpolate(lowerTier.params.maxCoreScoreRadius, upperTier.params.maxCoreScoreRadius),
-    radiusExpansionStep: interpolate(lowerTier.params.radiusExpansionStep, upperTier.params.radiusExpansionStep),
-    startingPairMinGap: interpolate(lowerTier.params.startingPairMinGap, upperTier.params.startingPairMinGap),
-    startingPairMaxGap: interpolate(lowerTier.params.startingPairMaxGap, upperTier.params.startingPairMaxGap),
-    startingPairPreferredGap: interpolate(lowerTier.params.startingPairPreferredGap, upperTier.params.startingPairPreferredGap)
-  };
-}
 
 export type LadderSnapshotGame = {
   id: string;
@@ -104,187 +25,66 @@ export type LadderSnapshotGame = {
 
 export type LadderSnapshot = {
   snapshotVersion: string;
-  builtAt: Date;
   expiresAt: number;
   games: LadderSnapshotGame[];
-};
-
-export type RunGamePayload = {
-  id: string;
-  name: string;
-  year: number | null;
-  imageUrl: string | null;
-  thumbUrl: string | null;
-  snapshotScore: number;
-  seedRank: number;
 };
 
 export type BuiltRunDefinition = {
   runId: string;
   snapshotVersion: string;
-  bandModel: typeof RUN_BAND_MODEL;
-  initialPair: {
-    leftGameId: string;
-    rightGameId: string;
+  roundPairs: RunPair[];
+  games: Record<string, RunGame>;
+};
+
+type SourceGame = {
+  _id: { toString(): string };
+  name: string;
+  year?: number | null;
+  seedRank: number;
+  currentScore: number;
+  totalAppearances: number;
+  cover?: {
+    imageUrl?: string | null;
+    thumbUrl?: string | null;
   };
-  challengerQueue: Array<{
-    round: number;
-    gameId: string;
-    bucket: string;
-  }>;
-  roundPairs: RunRoundPair[];
-  games: Record<string, RunGamePayload>;
-  snapshotScores: Record<string, number>;
-  gameIds: string[];
-};
-
-export type RunRoundPair = {
-  round: number;
-  leftGameId: string;
-  rightGameId: string;
-  bucket: string;
-};
-
-export type LadderSnapshotMetrics = {
-  cacheStatus: "hit" | "miss" | "shared";
-  dbFetchMs: number;
-  totalMs: number;
-  gameCount: number;
-};
-
-export type CreateRunDefinitionMetrics = {
-  snapshot: LadderSnapshotMetrics;
-  buildRunMs: number;
-  totalMs: number;
-};
-
-type LadderSnapshotBuildResult = {
-  snapshot: LadderSnapshot;
-  dbFetchMs: number;
-  gameCount: number;
 };
 
 let cachedLadderSnapshot: LadderSnapshot | null = null;
-let ladderSnapshotPromise: Promise<LadderSnapshotBuildResult> | null = null;
+let ladderSnapshotRefresh: Promise<LadderSnapshot> | null = null;
 
 export async function createRunDefinition(): Promise<BuiltRunDefinition> {
-  const { runDefinition } = await createRunDefinitionWithMetrics();
-  return runDefinition;
+  return buildRunDefinition(await getLadderSnapshot());
 }
 
-export async function createRunDefinitionWithMetrics(): Promise<{
-  runDefinition: BuiltRunDefinition;
-  metrics: CreateRunDefinitionMetrics;
-}> {
-  const startedAt = performance.now();
-  const { snapshot, metrics: snapshotMetrics } = await getLadderSnapshotWithMetrics();
-  const buildStartedAt = performance.now();
-  const runDefinition = buildRunDefinition(snapshot);
-  const buildRunMs = Math.round(performance.now() - buildStartedAt);
-
-  return {
-    runDefinition,
-    metrics: {
-      snapshot: snapshotMetrics,
-      buildRunMs,
-      totalMs: Math.round(performance.now() - startedAt)
-    }
-  };
-}
-
-export function getRoundBucketLabel(round: number, challengerQueue?: Array<{ round: number; bucket: string }>) {
-  if (round === 1) {
-    return OPENING_BUCKET_LABEL;
-  }
-
-  const challenger = challengerQueue?.find((entry) => entry.round === round);
-
-  if (!challenger) {
-    throw new RangeError(`No issued challenger bucket was found for round ${round}.`);
-  }
-
-  return challenger.bucket;
-}
-
-export async function getLadderSnapshot(now = Date.now()): Promise<LadderSnapshot> {
-  const { snapshot } = await getLadderSnapshotWithMetrics(now);
-  return snapshot;
-}
-
-async function getLadderSnapshotWithMetrics(now = Date.now()): Promise<{
-  snapshot: LadderSnapshot;
-  metrics: LadderSnapshotMetrics;
-}> {
-  const startedAt = performance.now();
+async function getLadderSnapshot(): Promise<LadderSnapshot> {
+  const now = Date.now();
 
   if (cachedLadderSnapshot && cachedLadderSnapshot.expiresAt > now) {
-    return {
-      snapshot: cachedLadderSnapshot,
-      metrics: {
-        cacheStatus: "hit",
-        dbFetchMs: 0,
-        totalMs: Math.round(performance.now() - startedAt),
-        gameCount: cachedLadderSnapshot.games.length
-      }
-    };
+    return cachedLadderSnapshot;
   }
 
-  const cacheStatus = ladderSnapshotPromise ? "shared" : "miss";
-
-  if (!ladderSnapshotPromise) {
-    ladderSnapshotPromise = buildLadderSnapshot(now).finally(() => {
-      ladderSnapshotPromise = null;
+  ladderSnapshotRefresh ??= buildLadderSnapshot(now)
+    .then((snapshot) => (cachedLadderSnapshot = snapshot))
+    .finally(() => {
+      ladderSnapshotRefresh = null;
     });
+
+  if (cachedLadderSnapshot) {
+    // Stale-while-revalidate: serve the expired snapshot while the refresh runs.
+    // The failure is already logged in buildLadderSnapshot; the stale copy stays in use.
+    ladderSnapshotRefresh.catch(() => {});
+    return cachedLadderSnapshot;
   }
 
-  const result = await ladderSnapshotPromise;
-
-  if (!cachedLadderSnapshot || cachedLadderSnapshot.expiresAt <= now) {
-    cachedLadderSnapshot = result.snapshot;
-  }
-
-  return {
-    snapshot: result.snapshot,
-    metrics: {
-      cacheStatus,
-      dbFetchMs: result.dbFetchMs,
-      totalMs: Math.round(performance.now() - startedAt),
-      gameCount: result.gameCount
-    }
-  };
+  return ladderSnapshotRefresh;
 }
 
-async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshotBuildResult> {
+async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshot> {
   const games = await getGamesCollection();
-  const builtAt = new Date(nowMs);
-  let sourceGames: Array<{
-    _id: { toString(): string };
-    name: string;
-    year?: number | null;
-    seedRank: number;
-    currentScore: number;
-    totalAppearances: number;
-    cover?: {
-      imageUrl?: string | null;
-      thumbUrl?: string | null;
-    };
-  }>;
 
   try {
-    const dbFetchStartedAt = performance.now();
-    sourceGames = await games
-      .find<{
-        _id: { toString(): string };
-        name: string;
-        year?: number | null;
-        seedRank: number;
-        currentScore: number;
-        totalAppearances: number;
-        cover?: {
-          imageUrl?: string | null;
-          thumbUrl?: string | null;
-        };
-      }>(
+    const sourceGames = await games
+      .find<SourceGame>(
         {},
         {
           projection: {
@@ -301,36 +101,25 @@ async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshotBuildRe
       )
       .sort({ currentScore: -1, _id: 1 })
       .toArray();
-    const dbFetchMs = Math.round(performance.now() - dbFetchStartedAt);
 
     if (sourceGames.length < 2) {
-      console.error("Insufficient games available to create a run.", {
-        gameCount: sourceGames.length
-      });
-      throw new Error("At least two games are required to create a run.");
+      throw new Error(`At least two games are required to create a run (found ${sourceGames.length}).`);
     }
 
-    const snapshotGames = sourceGames.map((game, index) => ({
-      id: game._id.toString(),
-      name: game.name,
-      year: game.year ?? null,
-      seedRank: game.seedRank,
-      snapshotScore: game.currentScore,
-      totalAppearances: game.totalAppearances,
-      imageUrl: game.cover?.imageUrl ?? null,
-      thumbUrl: game.cover?.thumbUrl ?? null,
-      percentileFromBottom: getPercentileFromBottom(index, sourceGames.length)
-    }));
-
     return {
-      snapshot: {
-        snapshotVersion: builtAt.toISOString(),
-        builtAt,
-        expiresAt: nowMs + LADDER_SNAPSHOT_TTL_MS,
-        games: snapshotGames
-      },
-      dbFetchMs,
-      gameCount: snapshotGames.length
+      snapshotVersion: new Date(nowMs).toISOString(),
+      expiresAt: nowMs + LADDER_SNAPSHOT_TTL_MS,
+      games: sourceGames.map((game, index) => ({
+        id: game._id.toString(),
+        name: game.name,
+        year: game.year ?? null,
+        seedRank: game.seedRank,
+        snapshotScore: game.currentScore,
+        totalAppearances: game.totalAppearances,
+        imageUrl: game.cover?.imageUrl ?? null,
+        thumbUrl: game.cover?.thumbUrl ?? null,
+        percentileFromBottom: getPercentileFromBottom(index, sourceGames.length)
+      }))
     };
   } catch (error) {
     console.error("Failed to load games for ladder snapshot.", {
@@ -342,13 +131,9 @@ async function buildLadderSnapshot(nowMs: number): Promise<LadderSnapshotBuildRe
 }
 
 export function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition {
-  if (snapshot.games.length < 2) {
-    throw new Error("At least two games are required to build a run.");
-  }
-
   const usedGameIds = new Set<string>();
   let deepCutVsDeepCutRounds = 0;
-  const roundPairs: RunRoundPair[] = [];
+  const roundPairs: RunPair[] = [];
 
   for (let round = 1; round <= OPENING_BRACKET_ROUNDS; round += 1) {
     const pair = pickRoundPair({
@@ -374,52 +159,29 @@ export function buildRunDefinition(snapshot: LadderSnapshot): BuiltRunDefinition
     });
   }
 
-  const issuedGameIds = Array.from(
-    new Set(roundPairs.flatMap((pair) => [pair.leftGameId, pair.rightGameId]))
-  );
-  const initialPair = roundPairs[0];
-  const challengerQueue: BuiltRunDefinition["challengerQueue"] = [];
+  const games: Record<string, RunGame> = {};
 
-  const games = Object.fromEntries(
-    issuedGameIds.map((gameId) => {
-      const game = snapshot.games.find((candidate) => candidate.id === gameId);
+  for (const game of snapshot.games) {
+    if (!usedGameIds.has(game.id)) continue;
 
-      if (!game) {
-        throw new Error(`Issued game ${gameId} is missing from the ladder snapshot.`);
-      }
-
-      return [
-        gameId,
-        {
-          id: game.id,
-          name: game.name,
-          year: game.year,
-          imageUrl: game.imageUrl,
-          thumbUrl: game.thumbUrl,
-          snapshotScore: game.snapshotScore,
-          seedRank: game.seedRank
-        } satisfies RunGamePayload
-      ];
-    })
-  );
-
-  const snapshotScores = Object.fromEntries(
-    issuedGameIds.map((gameId) => [gameId, games[gameId].snapshotScore])
-  );
+    // Count the issue against the cached snapshot so back-to-back runs rotate through fresh games.
+    game.totalAppearances += 1;
+    games[game.id] = {
+      id: game.id,
+      name: game.name,
+      year: game.year,
+      imageUrl: game.imageUrl,
+      thumbUrl: game.thumbUrl,
+      snapshotScore: game.snapshotScore,
+      seedRank: game.seedRank
+    };
+  }
 
   return {
     runId: randomUUID(),
     snapshotVersion: snapshot.snapshotVersion,
-    bandModel: RUN_BAND_MODEL,
-    initialPair: {
-      leftGameId: initialPair.leftGameId,
-      rightGameId: initialPair.rightGameId
-    },
-    challengerQueue,
     roundPairs,
-    games,
-    snapshotScores,
-    gameIds: issuedGameIds
+    games
   };
 }
 
@@ -442,37 +204,16 @@ function pickRoundPair({
   usedGameIds,
   allowDeepCutVsDeepCut
 }: PickRoundPairInput): RoundPairSelection {
-  if (round === MAX_RUN_ROUNDS) {
-    return pickFinalBossPair(games, usedGameIds);
-  }
-
   if (DISCOVERY_APPEARANCE_ROUNDS.has(round)) {
-    return pickDiscoveryPair(games, usedGameIds, allowDeepCutVsDeepCut);
-  }
-
-  if (round >= 18) {
     return pickPlannedPair({
-      bucket: "elite:setup",
-      primaryCandidates: games.filter(isEliteGame),
+      bucket: "discovery:anchored",
+      primaryCandidates: games.filter(isDeepCut),
       secondaryCandidates: games.filter(isRecognizable),
       games,
       usedGameIds,
-      targetGap: 75,
-      maxGap: 150,
-      allowDeepCutVsDeepCut: false
-    });
-  }
-
-  if (round >= 12) {
-    return pickPlannedPair({
-      bucket: "core:hard",
-      primaryCandidates: games.filter(isRecognizable),
-      secondaryCandidates: games.filter(isRecognizable),
-      games,
-      usedGameIds,
-      targetGap: 60,
-      maxGap: 125,
-      allowDeepCutVsDeepCut: false
+      targetGap: 100,
+      maxGap: 180,
+      allowDeepCutVsDeepCut
     });
   }
 
@@ -501,40 +242,6 @@ function pickRoundPair({
   });
 }
 
-function pickDiscoveryPair(
-  games: LadderSnapshotGame[],
-  usedGameIds: Set<string>,
-  allowDeepCutVsDeepCut: boolean
-) {
-  return pickPlannedPair({
-    bucket: "discovery:anchored",
-    primaryCandidates: games.filter(isDeepCut),
-    secondaryCandidates: games.filter(isRecognizable),
-    games,
-    usedGameIds,
-    targetGap: 100,
-    maxGap: 180,
-    allowDeepCutVsDeepCut
-  });
-}
-
-function pickFinalBossPair(games: LadderSnapshotGame[], usedGameIds: Set<string>) {
-  const topGameCount = Math.max(1, Math.ceil(games.length * 0.01));
-  const topOnePercentGames = games.slice(0, topGameCount);
-
-  return pickPlannedPair({
-    bucket: "final:top-1-percent",
-    primaryCandidates: topOnePercentGames,
-    secondaryCandidates: games.filter((game) => isRecognizable(game) && !topOnePercentGames.includes(game)),
-    games,
-    usedGameIds,
-    targetGap: 80,
-    maxGap: 180,
-    allowDeepCutVsDeepCut: false,
-    allowUsedPrimary: true
-  });
-}
-
 function pickPlannedPair({
   bucket,
   primaryCandidates,
@@ -543,8 +250,7 @@ function pickPlannedPair({
   usedGameIds,
   targetGap,
   maxGap,
-  allowDeepCutVsDeepCut,
-  allowUsedPrimary = false
+  allowDeepCutVsDeepCut
 }: {
   bucket: string;
   primaryCandidates: LadderSnapshotGame[];
@@ -554,43 +260,15 @@ function pickPlannedPair({
   targetGap: number;
   maxGap: number;
   allowDeepCutVsDeepCut: boolean;
-  allowUsedPrimary?: boolean;
 }): RoundPairSelection {
-  const fallbackPrimary = primaryCandidates.length > 0 ? primaryCandidates : games;
-  const fallbackSecondary = secondaryCandidates.length > 0 ? secondaryCandidates : games;
+  const primary = primaryCandidates.length > 0 ? primaryCandidates : games;
+  const secondary = secondaryCandidates.length > 0 ? secondaryCandidates : games;
+  const base = { usedGameIds, targetGap, allowUsed: false };
   const pair =
-    findPair(fallbackPrimary, fallbackSecondary, {
-      usedGameIds,
-      targetGap,
-      maxGap,
-      allowDeepCutVsDeepCut,
-      allowUsedPrimary,
-      allowUsedAny: false
-    }) ??
-    findPair(fallbackPrimary, fallbackSecondary, {
-      usedGameIds,
-      targetGap,
-      maxGap: maxGap * 2,
-      allowDeepCutVsDeepCut,
-      allowUsedPrimary,
-      allowUsedAny: false
-    }) ??
-    findPair(fallbackPrimary, fallbackSecondary, {
-      usedGameIds,
-      targetGap,
-      maxGap: Infinity,
-      allowDeepCutVsDeepCut: true,
-      allowUsedPrimary,
-      allowUsedAny: false
-    }) ??
-    findPair(fallbackPrimary, fallbackSecondary, {
-      usedGameIds,
-      targetGap,
-      maxGap: Infinity,
-      allowDeepCutVsDeepCut: true,
-      allowUsedPrimary: true,
-      allowUsedAny: true
-    });
+    findPair(primary, secondary, { ...base, maxGap, allowDeepCutVsDeepCut }) ??
+    findPair(primary, secondary, { ...base, maxGap: maxGap * 2, allowDeepCutVsDeepCut }) ??
+    findPair(primary, secondary, { ...base, maxGap: Infinity, allowDeepCutVsDeepCut: true }) ??
+    findPair(primary, secondary, { ...base, maxGap: Infinity, allowDeepCutVsDeepCut: true, allowUsed: true });
 
   if (!pair) {
     throw new Error("Unable to build a scheduled matchup pair from the current ladder snapshot.");
@@ -610,12 +288,11 @@ function findPair(
     targetGap: number;
     maxGap: number;
     allowDeepCutVsDeepCut: boolean;
-    allowUsedPrimary: boolean;
-    allowUsedAny: boolean;
+    allowUsed: boolean;
   }
 ) {
-  const primaryPool = limitCandidatePool(primaryCandidates, options.usedGameIds, options.allowUsedPrimary);
-  const secondaryPool = limitCandidatePool(secondaryCandidates, options.usedGameIds, options.allowUsedAny);
+  const primaryPool = limitCandidatePool(primaryCandidates, options.usedGameIds, options.allowUsed);
+  const secondaryPool = limitCandidatePool(secondaryCandidates, options.usedGameIds, options.allowUsed);
   const candidates: Array<{
     left: LadderSnapshotGame;
     right: LadderSnapshotGame;
@@ -625,8 +302,6 @@ function findPair(
   for (const primary of primaryPool) {
     for (const secondary of secondaryPool) {
       if (primary.id === secondary.id) continue;
-      if (!options.allowUsedAny && options.usedGameIds.has(secondary.id)) continue;
-      if (!options.allowUsedPrimary && options.usedGameIds.has(primary.id)) continue;
       if (!options.allowDeepCutVsDeepCut && isDeepCut(primary) && isDeepCut(secondary)) continue;
 
       const gap = Math.abs(primary.snapshotScore - secondary.snapshotScore);
@@ -652,8 +327,7 @@ function findPair(
     return Math.random() - 0.5;
   });
 
-  const selectionPool = candidates.slice(0, Math.min(SELECTION_POOL_SIZE, candidates.length));
-  const selected = sample(selectionPool);
+  const selected = sample(candidates.slice(0, SELECTION_POOL_SIZE));
 
   return {
     left: selected.left,
@@ -679,7 +353,7 @@ function limitCandidatePool(
     return Math.random() - 0.5;
   });
 
-  return prioritized.slice(0, Math.max(SELECTION_POOL_SIZE * 3, MAX_RUN_ROUNDS * 2));
+  return prioritized.slice(0, CANDIDATE_POOL_SIZE);
 }
 
 function arrangePairSides(left: LadderSnapshotGame, right: LadderSnapshotGame) {
@@ -702,10 +376,6 @@ function isRecognizable(game: LadderSnapshotGame) {
 
 function isDeepCut(game: LadderSnapshotGame) {
   return game.seedRank >= DEEP_CUT_SEED_RANK_MIN;
-}
-
-function isEliteGame(game: LadderSnapshotGame) {
-  return game.percentileFromBottom >= 90;
 }
 
 function getExposureScore(game: LadderSnapshotGame) {

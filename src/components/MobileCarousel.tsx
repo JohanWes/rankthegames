@@ -88,13 +88,14 @@ export function MobileCarousel({
         <DotIndicator active={activeIndex === 1} />
       </div>
 
-      {/* Carousel on mobile only - hidden at md+ */}
+      {/* Snap carousel on mobile; at md+ both wrappers become display:contents
+          so the cards are laid out directly by the parent flex row. */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
         className={`
           w-screen flex snap-x snap-mandatory scroll-smooth no-scrollbar
-          md:hidden
+          md:contents
           ${locked ? "overflow-x-hidden" : "overflow-x-auto"}
         `}
       >
@@ -104,16 +105,11 @@ export function MobileCarousel({
             ref={(el) => {
               slotRefs.current[i] = el;
             }}
-            className="w-[86vw] flex-shrink-0 snap-start pl-3 pr-1 last:pr-3 max-h-[70svh]"
+            className="w-[86vw] flex-shrink-0 snap-start pl-3 pr-1 last:pr-3 max-h-[70svh] md:contents"
           >
             {child}
           </div>
         ))}
-      </div>
-
-      {/* Desktop pass-through - render children directly without wrapper */}
-      <div className="hidden md:contents">
-        {children}
       </div>
     </>
   );

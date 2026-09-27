@@ -1,8 +1,4 @@
-import type {
-  CreateRunResponse,
-  RunGame,
-  LeaderboardResponse
-} from "@/lib/types";
+import type { CreateRunResponse, RunGame } from "@/lib/types";
 
 function createGame(overrides: Partial<RunGame> & { id: string }): RunGame {
   return {
@@ -36,7 +32,6 @@ export function createMockRunResponse(
   );
 
   const games = Object.fromEntries(gameList.map((game) => [game.id, game]));
-  const challengerQueue: CreateRunResponse["challengerQueue"] = [];
   const roundPairs = Array.from({ length: 8 }, (_, index) => ({
     round: index + 1,
     leftGameId: `g${index * 2 + 1}`,
@@ -46,62 +41,10 @@ export function createMockRunResponse(
 
   return {
     runId: "test-run-001",
-    snapshotVersion: "2024-01-01T00:00:00.000Z",
-    issuedAt: "2024-01-01T00:00:00.000Z",
-    expiresAt: "2024-01-01T00:15:00.000Z",
-    bandModel: "percentile.v1",
-    initialPair: {
-      leftGameId: roundPairs[0].leftGameId,
-      rightGameId: roundPairs[0].rightGameId
-    },
-    challengerQueue,
+    expiresAt: "2024-01-01T02:00:00.000Z",
     roundPairs,
     games,
     signedRunToken: "mock-signed-token",
     ...overrides
-  };
-}
-
-export function createMockLeaderboardResponse(): LeaderboardResponse {
-  return {
-    items: [
-      {
-        id: "lb1",
-        name: "Top Game",
-        year: 2023,
-        imageUrl: null,
-        thumbUrl: null,
-        currentScore: 1200,
-        seedRank: 1,
-        wins: 50,
-        losses: 10,
-        totalMatches: 60
-      },
-      {
-        id: "lb2",
-        name: "Second Game",
-        year: 2022,
-        imageUrl: null,
-        thumbUrl: null,
-        currentScore: 1100,
-        seedRank: 2,
-        wins: 40,
-        losses: 15,
-        totalMatches: 55
-      },
-      {
-        id: "lb3",
-        name: "Third Game",
-        year: 2021,
-        imageUrl: null,
-        thumbUrl: null,
-        currentScore: 1000,
-        seedRank: 3,
-        wins: 30,
-        losses: 20,
-        totalMatches: 50
-      }
-    ],
-    generatedAt: "2024-01-01T00:00:00.000Z"
   };
 }

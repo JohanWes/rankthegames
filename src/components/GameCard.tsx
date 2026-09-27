@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Image from "next/image";
 import { motion, useSpring, useTransform } from "framer-motion";
+import { CARD_IMAGE_SIZES } from "@/lib/run-prefetch";
 import type { RunGame } from "@/lib/types";
 
 export type GameCardState =
@@ -20,8 +21,6 @@ type GameCardProps = {
   disabled?: boolean;
   showScore?: boolean;
   position: "left" | "right";
-  isHigher?: boolean;
-  priority?: boolean;
 };
 
 const borderColors: Record<GameCardState, string> = {
@@ -137,15 +136,9 @@ export function GameCard({
   disabled = false,
   showScore = false,
   position,
-  isHigher = false,
-  priority = false,
 }: GameCardProps) {
-  const [imageLoaded, setImageLoaded] = useState(false);
   const canClick = !disabled && state === "idle" && !!onSelect;
   const showResult = state === "correct" || state === "incorrect";
-  const posterUrl =
-    game.thumbUrl && game.thumbUrl !== game.imageUrl ? game.thumbUrl : null;
-  const imageSizes = "(max-width: 768px) 50vw, (max-width: 1280px) 440px, 520px";
 
   return (
     <div>
@@ -169,31 +162,15 @@ export function GameCard({
         `}
       >
         {/* Cover image */}
-        {game.imageUrl || posterUrl ? (
-          <>
-            {posterUrl ? (
-              <Image
-                src={posterUrl}
-                alt=""
-                aria-hidden="true"
-                fill
-                className="object-cover scale-[1.02]"
-                sizes={imageSizes}
-              />
-            ) : null}
-            {game.imageUrl ? (
-              <Image
-                src={game.imageUrl}
-                alt={game.name}
-                fill
-                className="object-cover transition-opacity duration-300 ease-out"
-                style={{ opacity: imageLoaded || !posterUrl ? 1 : 0 }}
-                sizes={imageSizes}
-                priority={priority}
-                onLoad={() => setImageLoaded(true)}
-              />
-            ) : null}
-          </>
+        {game.imageUrl ? (
+          <Image
+            src={game.imageUrl}
+            alt={game.name}
+            fill
+            className="object-cover"
+            sizes={CARD_IMAGE_SIZES}
+            priority
+          />
         ) : (
           /* Gradient fallback with gamepad icon */
           <div
@@ -208,21 +185,6 @@ export function GameCard({
               {game.name}
             </span>
           </div>
-        )}
-
-        {/* Crown for higher-scored game */}
-        {isHigher && showScore && (
-          <motion.div
-            initial={{ scale: 0, rotate: -20 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 350, damping: 14, delay: 0.15 }}
-            className="absolute top-3 left-3 z-20 text-2xl leading-none"
-            aria-label="Higher score"
-          >
-            <span className="drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]">
-              ♛
-            </span>
-          </motion.div>
         )}
 
         {/* Result icon (checkmark / X) */}
@@ -248,10 +210,7 @@ export function GameCard({
           >
             <div
               className="glass rounded-xl px-4 py-3 text-center"
-              style={{
-                background: "rgba(7, 11, 20, 0.75)",
-                backdropFilter: "blur(12px) saturate(1.3)",
-              }}
+              style={{ background: "rgba(7, 11, 20, 0.75)" }}
             >
               <ScoreDisplay score={game.snapshotScore} />
               <p className="mt-0.5 text-[10px] uppercase tracking-[0.2em] text-text-secondary">
@@ -264,7 +223,7 @@ export function GameCard({
 
       {/* Title below card — mobile only */}
       <div className="mt-2 px-1 md:hidden">
-        <h3 className="font-display text-xl leading-tight font-semibold text-text-primary">
+        <h3 className="line-clamp-2 min-h-[2.5em] font-display text-xl leading-tight font-semibold text-text-primary">
           {game.name}
         </h3>
         {game.year != null && (

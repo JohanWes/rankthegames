@@ -51,6 +51,7 @@ describe("getRatingDelta - smooth curve", () => {
 
   describe("upsets (lower-rated game picked)", () => {
     it.each([
+      { gap: 5, expectedDelta: 4, label: "near-tie upset" },
       { gap: 50, expectedDelta: 5, label: "small gap upset" },
       { gap: 100, expectedDelta: 8, label: "small upset" },
       { gap: 200, expectedDelta: 12, label: "medium upset" },

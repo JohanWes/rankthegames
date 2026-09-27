@@ -6,19 +6,11 @@ vi.mock("../lib/env", () => ({
     MONGODB_URI: "mongodb://localhost:27017",
     MONGODB_DB_NAME: "test",
     RUN_TOKEN_SECRET: "test-secret-key-for-testing-only-32chars",
-    IP_HASH_SALT: "test-salt-key-for-testing-only-32chars",
-    IGDB_CLIENT_ID: "test-igdb-client-id",
-    IGDB_CLIENT_SECRET: "test-igdb-client-secret"
+    IP_HASH_SALT: "test-salt-key-for-testing-only-32chars"
   }
 }));
 
-import {
-  buildRunDefinition,
-  getScoreBasedParams,
-  MAX_RUN_ROUNDS,
-  RUN_BAND_MODEL,
-  type LadderSnapshot
-} from "./run-builder.ts";
+import { buildRunDefinition, type LadderSnapshot } from "./run-builder.ts";
 import { OPENING_BRACKET_ROUNDS } from "../lib/bracket.ts";
 
 function createSnapshot(): LadderSnapshot {
@@ -31,7 +23,6 @@ function createSnapshot(): LadderSnapshot {
 
   return {
     snapshotVersion: "2026-02-28T00:00:00.000Z",
-    builtAt: new Date("2026-02-28T00:00:00.000Z"),
     expiresAt: Date.now() + 30_000,
     games: scores.map((score, index) => ({
       id: `g${index + 1}`,
@@ -56,7 +47,6 @@ function createHighTierSnapshot(): LadderSnapshot {
 
   return {
     snapshotVersion: "2026-02-28T00:00:00.000Z",
-    builtAt: new Date("2026-02-28T00:00:00.000Z"),
     expiresAt: Date.now() + 30_000,
     games: scores.map((score, index) => ({
       id: `h${index + 1}`,
@@ -91,53 +81,10 @@ function createLargeSnapshot(): LadderSnapshot {
 
   return {
     snapshotVersion: "2026-02-28T00:00:00.000Z",
-    builtAt: new Date("2026-02-28T00:00:00.000Z"),
     expiresAt: Date.now() + 30_000,
     games
   };
 }
-
-describe("getScoreBasedParams", () => {
-  it("returns wide gaps for low-rated anchors", () => {
-    const params = getScoreBasedParams(400);
-    expect(params.coreScoreRadius).toBe(150);
-    expect(params.startingPairMinGap).toBe(80);
-    expect(params.startingPairMaxGap).toBe(300);
-    expect(params.startingPairPreferredGap).toBe(175);
-  });
-
-  it("returns mid-tier values at score 700", () => {
-    const params = getScoreBasedParams(700);
-    expect(params.coreScoreRadius).toBe(80);
-    expect(params.startingPairMinGap).toBe(60);
-    expect(params.startingPairMaxGap).toBe(150);
-    expect(params.startingPairPreferredGap).toBe(100);
-  });
-
-  it("returns tight gaps for high-rated anchors", () => {
-    const params = getScoreBasedParams(900);
-    expect(params.coreScoreRadius).toBe(30);
-    expect(params.startingPairMinGap).toBe(10);
-    expect(params.startingPairMaxGap).toBe(40);
-    expect(params.startingPairPreferredGap).toBe(25);
-  });
-
-  it("interpolates between breakpoints", () => {
-    const params = getScoreBasedParams(550);
-    expect(params.coreScoreRadius).toBe(115);
-    expect(params.startingPairPreferredGap).toBe(138);
-  });
-
-  it("clamps below minimum score", () => {
-    const params = getScoreBasedParams(200);
-    expect(params).toEqual(getScoreBasedParams(400));
-  });
-
-  it("clamps above maximum score", () => {
-    const params = getScoreBasedParams(1100);
-    expect(params).toEqual(getScoreBasedParams(900));
-  });
-});
 
 describe("buildRunDefinition", () => {
   afterEach(() => {
@@ -148,22 +95,21 @@ describe("buildRunDefinition", () => {
     vi.spyOn(Math, "random").mockImplementation(() => 0);
 
     const run = buildRunDefinition(createSnapshot());
+    const gameIds = run.roundPairs.flatMap((pair) => [pair.leftGameId, pair.rightGameId]);
 
-    expect(run.bandModel).toBe(RUN_BAND_MODEL);
-    expect(MAX_RUN_ROUNDS).toBe(15);
     expect(run.roundPairs).toHaveLength(OPENING_BRACKET_ROUNDS);
-    expect(run.gameIds).toHaveLength(16);
-    expect(run.initialPair).toEqual({
-      leftGameId: run.roundPairs[0].leftGameId,
-      rightGameId: run.roundPairs[0].rightGameId
-    });
-    expect(new Set(run.gameIds).size).toBe(run.gameIds.length);
-
-    for (const pair of run.roundPairs) {
-      expect(pair.leftGameId).not.toBe(pair.rightGameId);
-      expect(run.gameIds).toContain(pair.leftGameId);
-      expect(run.gameIds).toContain(pair.rightGameId);
-    }
+    expect(new Set(gameIds).size).toBe(16);
+    expect(Object.keys(run.games).sort()).toEqual([...gameIds].sort());
+    expect(run.roundPairs.map((pair) => pair.bucket)).toEqual([
+      "warmup:recognizable",
+      "warmup:recognizable",
+      "warmup:recognizable",
+      "warmup:recognizable",
+      "discovery:anchored",
+      "core:balanced",
+      "core:balanced",
+      "discovery:anchored"
+    ]);
   });
 
   it("keeps warmup rounds recognizable and reasonably gapped", () => {

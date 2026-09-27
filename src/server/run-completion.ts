@@ -1,7 +1,8 @@
 import { ObjectId, MongoServerError, type AnyBulkWriteOperation } from "mongodb";
 import { z } from "zod";
-import { getBracketRoundPair } from "../lib/bracket.ts";
+import { getBracketRoundPair, MAX_TOURNAMENT_ROUNDS } from "../lib/bracket.ts";
 import { withMongoSession } from "../lib/mongodb.ts";
+import type { CompleteRunResponse } from "../lib/types.ts";
 import {
   getCollections,
   type GameDoc,
@@ -9,39 +10,25 @@ import {
   type RunSubmissionDoc
 } from "./collections.ts";
 import { applyRatingDelta, getRatingDelta } from "./rating.ts";
-import { MAX_RUN_ROUNDS } from "./run-builder.ts";
 import { verifyRunToken, type RunTokenPayload } from "./run-token.ts";
 
-const endedReasonSchema = z.enum(["wrong_guess", "max_rounds", "abandoned"]);
-
-const completeRunSelectionSchema = z.object({
-  round: z.number().int().min(1).max(MAX_RUN_ROUNDS),
-  pickedGameId: z.string().trim().min(1),
-  completedAt: z.string().datetime()
-});
-
+// Older clients also send endedReason/clientRunDurationMs; zod strips unknown keys, so they are
+// accepted and ignored. The server derives endedReason from the selections.
 export const completeRunRequestSchema = z.object({
   runId: z.string().trim().min(1),
   signedRunToken: z.string().trim().min(1),
-  selections: z.array(completeRunSelectionSchema).max(MAX_RUN_ROUNDS),
-  endedReason: endedReasonSchema,
-  clientRunDurationMs: z.number().int().nonnegative()
+  selections: z
+    .array(
+      z.object({
+        round: z.number().int().min(1).max(MAX_TOURNAMENT_ROUNDS),
+        pickedGameId: z.string().trim().min(1),
+        completedAt: z.string().datetime().optional()
+      })
+    )
+    .max(MAX_TOURNAMENT_ROUNDS)
 });
 
-export type CompleteRunRequest = z.infer<typeof completeRunRequestSchema>;
-
-export type CompleteRunResponse = {
-  accepted: true;
-  roundsAccepted: number;
-  finalScore: number;
-  ratingVersion: string;
-};
-
-export type CompleteRunSubmissionMetrics = {
-  transactionMs: number;
-  touchedGameCount: number;
-  submittedRoundCount: number;
-};
+type CompleteRunInput = z.infer<typeof completeRunRequestSchema>;
 
 type SubmittedRound = {
   round: number;
@@ -99,20 +86,9 @@ export class DuplicateRunSubmissionError extends Error {
 }
 
 export async function completeRunSubmission(
-  input: CompleteRunRequest,
+  input: CompleteRunInput,
   ipHash: string
 ): Promise<CompleteRunResponse> {
-  const { response } = await completeRunSubmissionWithMetrics(input, ipHash);
-  return response;
-}
-
-export async function completeRunSubmissionWithMetrics(
-  input: CompleteRunRequest,
-  ipHash: string
-): Promise<{
-  response: CompleteRunResponse;
-  metrics: CompleteRunSubmissionMetrics;
-}> {
   const tokenPayload = await verifySignedRunToken(input.signedRunToken);
 
   if (tokenPayload.runId !== input.runId) {
@@ -120,16 +96,13 @@ export async function completeRunSubmissionWithMetrics(
   }
 
   const submittedRounds = buildSubmittedRounds(input, tokenPayload);
+  const endedReason = getEndedReason(submittedRounds);
 
   const submittedAt = new Date();
   const ratingVersion = submittedAt.toISOString();
-  const touchedGameCount = new Set(
-    submittedRounds.flatMap((round) => [round.leftGameId, round.rightGameId])
-  ).size;
 
   try {
-    const transactionStartedAt = performance.now();
-    const transactionResult = await withMongoSession(async (session, db) =>
+    return await withMongoSession(async (session, db) =>
       session.withTransaction(async () => {
         const collections = getCollections(db);
         const gameIds = getTouchedGameIds(submittedRounds);
@@ -265,7 +238,7 @@ export async function completeRunSubmissionWithMetrics(
           _id: new ObjectId(),
           runId: input.runId,
           snapshotVersion: tokenPayload.snapshotVersion,
-          endedReason: input.endedReason,
+          endedReason,
           roundsAccepted: submittedRounds.length,
           finalScore,
           ipHash,
@@ -290,19 +263,6 @@ export async function completeRunSubmissionWithMetrics(
         };
       })
     );
-
-    if (!transactionResult) {
-      throw new Error("Run completion transaction did not produce a result.");
-    }
-
-    return {
-      response: transactionResult,
-      metrics: {
-        transactionMs: Math.round(performance.now() - transactionStartedAt),
-        touchedGameCount,
-        submittedRoundCount: submittedRounds.length
-      }
-    };
   } catch (error) {
     if (error instanceof MongoServerError && error.code === 11000) {
       throw new DuplicateRunSubmissionError();
@@ -312,19 +272,8 @@ export async function completeRunSubmissionWithMetrics(
   }
 }
 
-function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenPayload): SubmittedRound[] {
+function buildSubmittedRounds(input: CompleteRunInput, tokenPayload: RunTokenPayload): SubmittedRound[] {
   const selections = [...input.selections].sort((left, right) => left.round - right.round);
-
-  if (selections.length === 0) {
-    if (input.endedReason !== "abandoned") {
-      throw new RunCompletionValidationError(
-        "invalid_ended_reason",
-        "Only abandoned runs may be submitted without selections."
-      );
-    }
-
-    return [];
-  }
 
   const duplicateRounds = findDuplicateRound(selections.map((selection) => selection.round));
 
@@ -370,17 +319,6 @@ function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenP
       );
     }
 
-    if (
-      !tokenPayload.gameIds.includes(selection.pickedGameId) ||
-      !tokenPayload.gameIds.includes(issuedPair.leftGameId) ||
-      !tokenPayload.gameIds.includes(issuedPair.rightGameId)
-    ) {
-      throw new RunCompletionValidationError(
-        "unknown_game_id",
-        `Round ${selection.round} refers to a game outside the issued run.`
-      );
-    }
-
     const snapshotLeftScore = getSnapshotScore(tokenPayload, issuedPair.leftGameId);
     const snapshotRightScore = getSnapshotScore(tokenPayload, issuedPair.rightGameId);
     const isTie = snapshotLeftScore === snapshotRightScore;
@@ -403,15 +341,6 @@ function buildSubmittedRounds(input: CompleteRunRequest, tokenPayload: RunTokenP
     });
   }
 
-  validateRoundTermination(input.endedReason, submittedRounds);
-
-  return submittedRounds;
-}
-
-function validateRoundTermination(
-  endedReason: CompleteRunRequest["endedReason"],
-  submittedRounds: SubmittedRound[]
-) {
   const firstIncorrectRound = submittedRounds.findIndex((round) => !round.wasCorrect);
 
   if (firstIncorrectRound !== -1 && firstIncorrectRound !== submittedRounds.length - 1) {
@@ -421,19 +350,12 @@ function validateRoundTermination(
     );
   }
 
-  const expectedEndedReason =
-    firstIncorrectRound !== -1
-      ? "wrong_guess"
-      : submittedRounds.length === MAX_RUN_ROUNDS
-        ? "max_rounds"
-        : "abandoned";
+  return submittedRounds;
+}
 
-  if (endedReason !== expectedEndedReason) {
-    throw new RunCompletionValidationError(
-      "invalid_ended_reason",
-      `Expected endedReason ${expectedEndedReason} for the submitted selections.`
-    );
-  }
+function getEndedReason(submittedRounds: SubmittedRound[]): RunSubmissionDoc["endedReason"] {
+  if (submittedRounds.some((round) => !round.wasCorrect)) return "wrong_guess";
+  return submittedRounds.length === MAX_TOURNAMENT_ROUNDS ? "max_rounds" : "abandoned";
 }
 
 function getSnapshotScore(tokenPayload: RunTokenPayload, gameId: string) {

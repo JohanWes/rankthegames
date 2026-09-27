@@ -1,24 +1,16 @@
-import { getRequestIpHash } from "./ip-hash.ts";
-import { enforceRateLimit, type RateLimitResult } from "./rate-limit.ts";
+import type { RateLimitResult } from "./rate-limit.ts";
 
 type JsonResponseInit = {
   status?: number;
   headers?: HeadersInit;
 };
 
-export type ApiErrorBody = {
+type ApiErrorBody = {
   error: {
     code: string;
     message: string;
   };
 };
-
-export async function enforceRequestRateLimit(request: Request, route: string) {
-  return enforceRateLimit({
-    route,
-    key: getRequestIpHash(request) ?? "ip:unknown"
-  });
-}
 
 export function createJsonResponse(body: unknown, init: JsonResponseInit = {}) {
   const headers = createNoStoreHeaders(init.headers);
@@ -48,17 +40,6 @@ export function createErrorResponse(
       headers
     }
   );
-}
-
-export function createCachedJsonResponse(body: unknown, cacheControl: string, init: JsonResponseInit = {}) {
-  const headers = new Headers(init.headers);
-  headers.set("Cache-Control", cacheControl);
-  headers.set("Content-Type", "application/json; charset=utf-8");
-
-  return new Response(JSON.stringify(body), {
-    status: init.status ?? 200,
-    headers
-  });
 }
 
 export function createNoStoreHeaders(headers?: HeadersInit) {

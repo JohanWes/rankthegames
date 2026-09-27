@@ -44,4 +44,12 @@ describe("GameOverModal", () => {
     );
     expect(screen.getByText("View Leaderboard")).toBeInTheDocument();
   });
+
+  it("is a modal dialog with PLAY AGAIN focused", () => {
+    render(
+      <GameOverModal streak={3} highScore={5} isNewHighScore={false} onPlayAgain={() => {}} />
+    );
+    expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "true");
+    expect(screen.getByText("PLAY AGAIN")).toHaveFocus();
+  });
 });

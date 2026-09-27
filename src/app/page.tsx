@@ -7,31 +7,6 @@ import { LandingRunPrefetch } from "@/components/LandingRunPrefetch";
 import { DemoCards } from "@/components/DemoCards";
 import type { DemoPhase } from "@/components/DemoCards";
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.15,
-      delayChildren: 0.2,
-    },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 24, scale: 0.96 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    transition: {
-      type: "spring" as const,
-      stiffness: 120,
-      damping: 14,
-    },
-  },
-};
-
 export default function LandingPage() {
   const [demoPhase, setDemoPhase] = useState<DemoPhase>("idle");
   const handlePhaseChange = useCallback((phase: DemoPhase) => {
@@ -43,14 +18,10 @@ export default function LandingPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-6 py-12">
       <LandingRunPrefetch />
-      <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="flex w-full max-w-5xl flex-col items-center gap-6 md:gap-8"
-      >
+      {/* Entrance animation is CSS-only so the prerendered HTML animates in before hydration */}
+      <div className="flex w-full max-w-5xl flex-col items-center gap-6 md:gap-8">
         {/* Title */}
-        <motion.div variants={itemVariants} className="text-center">
+        <div className="animate-slide-up animate-slide-up-1 text-center">
           <h1 className="font-display text-5xl font-bold leading-none tracking-tight sm:text-6xl lg:text-7xl">
             <span className="text-text-primary glow-accent-text">
               RANK THE{" "}
@@ -60,19 +31,15 @@ export default function LandingPage() {
           <p className="mt-3 text-sm text-text-secondary sm:text-base">
             Which game is more popular?
           </p>
-        </motion.div>
+        </div>
 
         {/* Micro-demo */}
-        <motion.div variants={itemVariants} aria-hidden="true">
+        <div className="animate-slide-up animate-slide-up-2" aria-hidden="true">
           <DemoCards onPhaseChange={handlePhaseChange} />
-        </motion.div>
+        </div>
 
         {/* Bouncing chevron arrow */}
-        <motion.div
-          variants={itemVariants}
-          aria-hidden="true"
-          className="-my-2"
-        >
+        <div className="animate-slide-up animate-slide-up-3 -my-2" aria-hidden="true">
           <motion.svg
             width="24"
             height="24"
@@ -100,13 +67,10 @@ export default function LandingPage() {
               strokeLinejoin="round"
             />
           </motion.svg>
-        </motion.div>
+        </div>
 
         {/* CTA section */}
-        <motion.div
-          variants={itemVariants}
-          className="flex flex-col items-center gap-6"
-        >
+        <div className="animate-slide-up animate-slide-up-4 flex flex-col items-center gap-6">
           <motion.div
             animate={{
               scale: isWinner ? 1.08 : 1,
@@ -130,8 +94,8 @@ export default function LandingPage() {
           >
             View Leaderboard
           </Link>
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
     </main>
   );
 }

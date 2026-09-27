@@ -1,52 +1,42 @@
 "use client";
 
 import { useRef, useEffect, useCallback } from "react";
-import type { CompleteRunRequest, RunSelection } from "@/lib/types";
+import type { CompleteRunRequest } from "@/lib/types";
 
-type SubmitParams = {
-  runId: string;
-  signedRunToken: string;
-  selections: RunSelection[];
-  endedReason: CompleteRunRequest["endedReason"];
-  startedAt: number;
-};
+const COMPLETE_URL = "/api/runs/complete";
 
 export function useBeaconSubmit() {
   const submittedRef = useRef(false);
-  const paramsRef = useRef<SubmitParams | null>(null);
+  const paramsRef = useRef<CompleteRunRequest | null>(null);
 
-  /** Update the latest run params so beacon listeners can use them. */
-  const setRunParams = useCallback((params: SubmitParams | null) => {
+  /** Update the latest run params so the beacon can use them. */
+  const setRunParams = useCallback((params: CompleteRunRequest | null) => {
     paramsRef.current = params;
   }, []);
 
-  /** Normal fetch-based submission (game over / max rounds). */
-  const submitRun = useCallback(
-    async (endedReason: CompleteRunRequest["endedReason"]) => {
-      if (submittedRef.current || !paramsRef.current) return;
-      submittedRef.current = true;
+  /** Returns the body to submit once per run, or null if already submitted. */
+  const claimSubmission = useCallback((): string | null => {
+    if (submittedRef.current || !paramsRef.current) return null;
+    submittedRef.current = true;
+    return JSON.stringify(paramsRef.current);
+  }, []);
 
-      const params = paramsRef.current;
-      const body: CompleteRunRequest = {
-        runId: params.runId,
-        signedRunToken: params.signedRunToken,
-        selections: params.selections,
-        endedReason,
-        clientRunDurationMs: Date.now() - params.startedAt
-      };
+  /** Normal fetch-based submission (game over / tournament complete). */
+  const submitRun = useCallback(async () => {
+    const body = claimSubmission();
+    if (!body) return;
 
-      try {
-        await fetch("/api/runs/complete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        });
-      } catch {
-        // Best effort — fire-and-forget
-      }
-    },
-    []
-  );
+    try {
+      await fetch(COMPLETE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true
+      });
+    } catch {
+      // Best effort — fire-and-forget
+    }
+  }, [claimSubmission]);
 
   /** Reset submission guard for a new run. */
   const resetSubmission = useCallback(() => {
@@ -54,45 +44,21 @@ export function useBeaconSubmit() {
     paramsRef.current = null;
   }, []);
 
-  // Beacon-based submission for tab close / navigation away
+  // Beacon the partial run when the page is torn down (tab close, reload,
+  // external navigation) or this hook unmounts (in-app navigation).
   useEffect(() => {
     const sendBeacon = () => {
-      if (submittedRef.current || !paramsRef.current) return;
-      submittedRef.current = true;
-
-      const params = paramsRef.current;
-      const body: CompleteRunRequest = {
-        runId: params.runId,
-        signedRunToken: params.signedRunToken,
-        selections: params.selections,
-        endedReason: "abandoned",
-        clientRunDurationMs: Date.now() - params.startedAt
-      };
-
-      const blob = new Blob([JSON.stringify(body)], {
-        type: "application/json"
-      });
-      navigator.sendBeacon("/api/runs/complete", blob);
+      const body = claimSubmission();
+      if (!body) return;
+      navigator.sendBeacon(COMPLETE_URL, new Blob([body], { type: "application/json" }));
     };
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        sendBeacon();
-      }
-    };
-
-    const handleBeforeUnload = () => {
+    window.addEventListener("pagehide", sendBeacon);
+    return () => {
+      window.removeEventListener("pagehide", sendBeacon);
       sendBeacon();
     };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("beforeunload", handleBeforeUnload);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, []);
+  }, [claimSubmission]);
 
   return { submitRun, setRunParams, resetSubmission };
 }

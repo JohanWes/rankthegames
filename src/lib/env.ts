@@ -10,8 +10,8 @@ const envSchema = z.object({
   IP_HASH_SALT: z.string().min(32),
   TWITCH_CLIENT_ID: z.string().trim().optional(),
   TWITCH_CLIENT_SECRET: z.string().trim().optional(),
-  IGDB_CLIENT_ID: nonEmptyString,
-  IGDB_CLIENT_SECRET: nonEmptyString
+  IGDB_CLIENT_ID: z.string().trim().optional(),
+  IGDB_CLIENT_SECRET: z.string().trim().optional()
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

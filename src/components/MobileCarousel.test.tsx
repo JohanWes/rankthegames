@@ -3,15 +3,15 @@ import { render, screen } from "@testing-library/react";
 import { MobileCarousel } from "./MobileCarousel";
 
 describe("MobileCarousel", () => {
-  it("renders both children", () => {
+  it("renders each child exactly once", () => {
     render(
       <MobileCarousel>
         <div>Card A</div>
         <div>Card B</div>
       </MobileCarousel>
     );
-    expect(screen.getAllByText("Card A")).toHaveLength(2);
-    expect(screen.getAllByText("Card B")).toHaveLength(2);
+    expect(screen.getAllByText("Card A")).toHaveLength(1);
+    expect(screen.getAllByText("Card B")).toHaveLength(1);
   });
 
   it("renders VS badge and dot indicators", () => {

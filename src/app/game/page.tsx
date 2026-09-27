@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useGame } from "@/hooks/useGame";
 import { useBeaconSubmit } from "@/hooks/useBeaconSubmit";
@@ -66,65 +66,43 @@ export default function GamePage() {
   const { submitRun, setRunParams, resetSubmission } = useBeaconSubmit();
   const [isBracketOpen, setIsBracketOpen] = useState(false);
 
-  const submittedForRunRef = useRef<string | null>(null);
-
   // Keep beacon params in sync
   useEffect(() => {
-    if (game.runId && game.signedRunToken && game.startedAt) {
+    if (game.runId && game.signedRunToken) {
       setRunParams({
         runId: game.runId,
         signedRunToken: game.signedRunToken,
-        selections: game.selections,
-        endedReason: "abandoned",
-        startedAt: game.startedAt
+        selections: game.selections
       });
     }
-  }, [game.runId, game.signedRunToken, game.selections, game.startedAt, setRunParams]);
+  }, [game.runId, game.signedRunToken, game.selections, setRunParams]);
 
-  // Submit on game over or reset (completed run)
+  // Once the run is over (wrong pick or bracket complete): submit it (guarded
+  // to once per run inside useBeaconSubmit) and warm the next run.
+  const isRunOver = game.phase === "GAME_OVER" || game.phase === "TOURNAMENT_COMPLETE";
   useEffect(() => {
-    const shouldSubmit = game.phase === "GAME_OVER" || game.phase === "TOURNAMENT_COMPLETE";
-    if (shouldSubmit && game.runId && submittedForRunRef.current !== game.runId) {
-      submittedForRunRef.current = game.runId;
-
-      if (game.phase === "TOURNAMENT_COMPLETE") {
-        submitRun("max_rounds");
-      } else {
-        // streak matches selections length → all correct
-        const allCorrect = game.streak === game.selections.length;
-        let endedReason: "wrong_guess" | "max_rounds" | "abandoned";
-        if (!allCorrect) {
-          endedReason = "wrong_guess";
-        } else {
-          endedReason = "abandoned";
-        }
-        submitRun(endedReason);
-      }
-    }
-  }, [game.phase, game.runId, game.streak, game.selections.length, submitRun]);
-
-  // Prefetch next run while player is on a terminal screen
-  useEffect(() => {
-    if (game.phase === "GAME_OVER" || game.phase === "TOURNAMENT_COMPLETE") {
+    if (isRunOver) {
+      void submitRun();
       void warmRunPrefetch().catch(() => {});
     }
-  }, [game.phase]);
+  }, [isRunOver, submitRun]);
 
   const handlePlayAgain = () => {
-    submittedForRunRef.current = null;
     resetSubmission();
+    setIsBracketOpen(false);
     game.playAgain();
   };
 
   const handleResetContinue = () => {
     resetSubmission();
+    setIsBracketOpen(false);
     game.continueAfterReset();
   };
 
   // Loading state
   if (game.phase === "LOADING") {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-svh items-center justify-center">
         {game.error ? (
           <div className="text-center">
             <p className="text-wrong">{game.error}</p>
@@ -156,7 +134,7 @@ export default function GamePage() {
   const champion = championId ? game.games[championId] ?? null : null;
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-svh">
       <GameHeader
         streak={game.streak}
         previousStreak={game.previousStreak}
@@ -175,7 +153,7 @@ export default function GamePage() {
       />
 
       {/* Game area */}
-      <div className="relative flex min-h-screen flex-col items-center justify-center px-0 pt-14 pb-8 md:flex-row md:gap-6 md:px-4 md:pt-16">
+      <div className="relative flex min-h-svh flex-col items-center justify-center px-0 pt-14 pb-8 md:flex-row md:gap-6 md:px-4 md:pt-16">
         {game.leftGame && game.rightGame && (
           <MobileCarousel
             locked={game.phase !== "AWAITING_CHOICE"}
@@ -190,46 +168,38 @@ export default function GamePage() {
             }
           >
             <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={game.leftGame.id}
-                  initial={{ opacity: 0, scale: 0.97 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.97 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                >
-                  <GameCard
-                    game={game.leftGame}
-                    position="left"
-                    state={getCardState(game.phase, pickedId, game.leftGame.id, correctId)}
-                    onSelect={() => game.selectGame(game.leftGame!.id)}
-                    disabled={game.phase !== "AWAITING_CHOICE"}
-                    showScore={showScores}
-                    priority={game.currentRound === 1}
-                  />
-                </motion.div>
-              </AnimatePresence>
+              <motion.div
+                key={game.leftGame.id}
+                initial={{ opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+              >
+                <GameCard
+                  game={game.leftGame}
+                  position="left"
+                  state={getCardState(game.phase, pickedId, game.leftGame.id, correctId)}
+                  onSelect={() => game.selectGame(game.leftGame!.id)}
+                  disabled={game.phase !== "AWAITING_CHOICE"}
+                  showScore={showScores}
+                />
+              </motion.div>
             </div>
             <div className="w-full max-w-xs md:max-w-[440px] lg:max-w-[520px]">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={game.rightGame.id}
-                  initial={{ opacity: 0, scale: 0.97 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.97 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                >
-                  <GameCard
-                    game={game.rightGame}
-                    position="right"
-                    state={getCardState(game.phase, pickedId, game.rightGame.id, correctId)}
-                    onSelect={() => game.selectGame(game.rightGame!.id)}
-                    disabled={game.phase !== "AWAITING_CHOICE"}
-                    showScore={showScores}
-                    priority={game.currentRound === 1}
-                  />
-                </motion.div>
-              </AnimatePresence>
+              <motion.div
+                key={game.rightGame.id}
+                initial={{ opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+              >
+                <GameCard
+                  game={game.rightGame}
+                  position="right"
+                  state={getCardState(game.phase, pickedId, game.rightGame.id, correctId)}
+                  onSelect={() => game.selectGame(game.rightGame!.id)}
+                  disabled={game.phase !== "AWAITING_CHOICE"}
+                  showScore={showScores}
+                />
+              </motion.div>
             </div>
           </MobileCarousel>
         )}

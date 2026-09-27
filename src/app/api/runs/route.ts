@@ -1,67 +1,51 @@
-import { issueRunToken } from "@/server/run-token.ts";
-import { RateLimitExceededError } from "@/server/rate-limit.ts";
-import { createRunDefinitionWithMetrics } from "@/server/run-builder.ts";
+import type { CreateRunResponse } from "@/lib/types";
 import {
   applyRateLimitHeaders,
   createErrorResponse,
   createJsonResponse,
-  createNoStoreHeaders,
-  enforceRequestRateLimit
+  createNoStoreHeaders
 } from "@/server/api-response.ts";
+import { getRequestIpHash } from "@/server/ip-hash.ts";
+import { enforceRateLimit, RateLimitExceededError } from "@/server/rate-limit.ts";
+import { createRunDefinition } from "@/server/run-builder.ts";
+import { issueRunToken } from "@/server/run-token.ts";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const headers = createNoStoreHeaders();
-  const requestStartedAt = performance.now();
-  let stage = "rate_limit";
-  let rateLimitMs = 0;
+  const startedAt = performance.now();
 
   try {
-    const rateLimitStartedAt = performance.now();
-    const rateLimit = await enforceRequestRateLimit(request, "/api/runs");
-    rateLimitMs = Math.round(performance.now() - rateLimitStartedAt);
+    // The build is cached CPU work, so it runs alongside the rate-limit check.
+    const [rateLimit, run] = await Promise.all([
+      enforceRateLimit({ route: "/api/runs", key: getRequestIpHash(request) }),
+      createRunDefinition()
+    ]);
     applyRateLimitHeaders(headers, rateLimit);
 
-    stage = "build_run";
-    const { runDefinition, metrics } = await createRunDefinitionWithMetrics();
-    stage = "issue_token";
-    const tokenStartedAt = performance.now();
     const token = await issueRunToken({
-      runId: runDefinition.runId,
-      snapshotVersion: runDefinition.snapshotVersion,
-      initialPair: runDefinition.initialPair,
-      challengerQueue: runDefinition.challengerQueue,
-      roundPairs: runDefinition.roundPairs,
-      snapshotScores: runDefinition.snapshotScores,
-      gameIds: runDefinition.gameIds
+      runId: run.runId,
+      snapshotVersion: run.snapshotVersion,
+      roundPairs: run.roundPairs,
+      snapshotScores: Object.fromEntries(
+        Object.values(run.games).map((game) => [game.id, game.snapshotScore])
+      )
     });
-    const tokenIssueMs = Math.round(performance.now() - tokenStartedAt);
 
     console.info("Created run.", {
-      rateLimitMs,
-      snapshotCacheStatus: metrics.snapshot.cacheStatus,
-      snapshotDbFetchMs: metrics.snapshot.dbFetchMs,
-      snapshotMs: metrics.snapshot.totalMs,
-      snapshotGameCount: metrics.snapshot.gameCount,
-      runBuildMs: metrics.buildRunMs,
-      tokenIssueMs,
-      totalMs: Math.round(performance.now() - requestStartedAt)
+      roundCount: run.roundPairs.length,
+      totalMs: Math.round(performance.now() - startedAt)
     });
 
     return createJsonResponse(
       {
-        runId: runDefinition.runId,
-        snapshotVersion: runDefinition.snapshotVersion,
-        issuedAt: token.issuedAt,
+        runId: run.runId,
         expiresAt: token.expiresAt,
-        bandModel: runDefinition.bandModel,
-        initialPair: runDefinition.initialPair,
-        challengerQueue: runDefinition.challengerQueue,
-        roundPairs: runDefinition.roundPairs,
-        games: runDefinition.games,
+        roundPairs: run.roundPairs,
+        games: run.games,
         signedRunToken: token.signedRunToken
-      },
+      } satisfies CreateRunResponse,
       {
         status: 201,
         headers
@@ -81,7 +65,6 @@ export async function POST(request: Request) {
     }
 
     console.error("Failed to create run.", {
-      stage,
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined
     });

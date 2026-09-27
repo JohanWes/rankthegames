@@ -75,14 +75,6 @@ describe("GameCard", () => {
     render(
       <GameCard game={noImageGame} state="idle" position="left" />
     );
-    expect(screen.getByAltText("")).toBeInTheDocument();
-  });
-
-  it("renders fallback when both imageUrl and thumbUrl are null", () => {
-    const noImageGame = { ...baseGame, imageUrl: null, thumbUrl: null };
-    render(
-      <GameCard game={noImageGame} state="idle" position="left" />
-    );
     const names = screen.getAllByText("Test Game");
     expect(names.length).toBeGreaterThanOrEqual(2);
   });

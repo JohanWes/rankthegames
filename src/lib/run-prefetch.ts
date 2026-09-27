@@ -1,9 +1,31 @@
 "use client";
 
+import { getImageProps } from "next/image";
+import { preload } from "react-dom";
 import type { CreateRunResponse } from "@/lib/types";
+
+/** Must match the `sizes` GameCard passes to <Image> so preloads hit the same srcset candidate. */
+export const CARD_IMAGE_SIZES = "(max-width: 768px) 50vw, (max-width: 1280px) 440px, 520px";
+
+/** A warmed run with less than this much token lifetime left is discarded. */
+const MIN_REMAINING_MS = 30 * 60_000;
 
 let prefetchedRun: CreateRunResponse | null = null;
 let prefetchedRunPromise: Promise<CreateRunResponse> | null = null;
+
+export function preloadCover(url: string) {
+  const { props } = getImageProps({ src: url, alt: "", fill: true, sizes: CARD_IMAGE_SIZES });
+  preload(props.src, { as: "image", imageSrcSet: props.srcSet, imageSizes: props.sizes });
+}
+
+function preloadFirstPair(run: CreateRunResponse) {
+  const pair = run.roundPairs.find((p) => p.round === 1);
+  if (!pair) return;
+  for (const id of [pair.leftGameId, pair.rightGameId]) {
+    const url = run.games[id]?.imageUrl;
+    if (url) preloadCover(url);
+  }
+}
 
 async function requestRun(): Promise<CreateRunResponse> {
   const res = await fetch("/api/runs", { method: "POST" });
@@ -15,7 +37,20 @@ async function requestRun(): Promise<CreateRunResponse> {
   return (await res.json()) as CreateRunResponse;
 }
 
+function clearWarmRun() {
+  prefetchedRun = null;
+  prefetchedRunPromise = null;
+}
+
+function dropStaleWarmRun() {
+  if (prefetchedRun && Date.parse(prefetchedRun.expiresAt) - Date.now() < MIN_REMAINING_MS) {
+    clearWarmRun();
+  }
+}
+
 export function warmRunPrefetch(): Promise<CreateRunResponse> {
+  dropStaleWarmRun();
+
   if (prefetchedRun) {
     return Promise.resolve(prefetchedRun);
   }
@@ -24,11 +59,11 @@ export function warmRunPrefetch(): Promise<CreateRunResponse> {
     prefetchedRunPromise = requestRun()
       .then((data) => {
         prefetchedRun = data;
+        preloadFirstPair(data);
         return data;
       })
       .catch((error) => {
-        prefetchedRun = null;
-        prefetchedRunPromise = null;
+        clearWarmRun();
         throw error;
       });
   }
@@ -36,20 +71,23 @@ export function warmRunPrefetch(): Promise<CreateRunResponse> {
   return prefetchedRunPromise;
 }
 
+/** Synchronously take the warmed run if it has already resolved and is still fresh. */
+export function takeWarmRunIfReady(): CreateRunResponse | null {
+  dropStaleWarmRun();
+  const run = prefetchedRun;
+  if (run) clearWarmRun();
+  return run;
+}
+
 export async function consumeWarmRun(): Promise<CreateRunResponse> {
-  if (prefetchedRun) {
-    const data = prefetchedRun;
-    prefetchedRun = null;
-    prefetchedRunPromise = null;
-    return data;
-  }
+  const ready = takeWarmRunIfReady();
+  if (ready) return ready;
 
   if (prefetchedRunPromise) {
     try {
       return await prefetchedRunPromise;
     } finally {
-      prefetchedRun = null;
-      prefetchedRunPromise = null;
+      clearWarmRun();
     }
   }
 
@@ -57,6 +95,5 @@ export async function consumeWarmRun(): Promise<CreateRunResponse> {
 }
 
 export function resetRunPrefetchForTests() {
-  prefetchedRun = null;
-  prefetchedRunPromise = null;
+  clearWarmRun();
 }

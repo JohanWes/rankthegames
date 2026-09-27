@@ -4,7 +4,6 @@ import { useReducer, useCallback, useEffect, useRef } from "react";
 import type {
   GameState,
   RunGame,
-  RunChallenger,
   RunPair,
   RunSelection,
   CreateRunResponse
@@ -14,11 +13,11 @@ import {
   MAX_TOURNAMENT_ROUNDS,
   shouldShowStageIntro
 } from "@/lib/bracket";
-import { consumeWarmRun } from "@/lib/run-prefetch";
+import { consumeWarmRun, preloadCover, takeWarmRunIfReady } from "@/lib/run-prefetch";
 
-const REVEAL_DELAY_MS = 900;
-const TRANSITION_DELAY_MS = 1100;
-const SWAP_DELAY_MS = 250;
+const REVEAL_DELAY_MS = 400;
+const TRANSITION_DELAY_MS = 700;
+const SWAP_DELAY_MS = 150;
 const STAGE_INTRO_DELAY_MS = 1200;
 const HIGH_SCORE_KEY = "rankthegames_highscore";
 
@@ -31,7 +30,6 @@ type State = {
   runId: string | null;
   signedRunToken: string | null;
   games: Record<string, RunGame>;
-  challengerQueue: RunChallenger[];
   roundPairs: RunPair[];
   leftGame: RunGame | null;
   rightGame: RunGame | null;
@@ -41,22 +39,30 @@ type State = {
   highScore: number;
   isNewHighScore: boolean;
   selections: RunSelection[];
-  startedAt: number | null;
   error: string | null;
 };
 
+/** Score state carried into a freshly loaded run. */
+type ScoreCarry = Pick<State, "streak" | "previousStreak" | "highScore" | "isNewHighScore">;
+
 type Action =
   | { type: "FETCH_START" }
-  | { type: "FETCH_SUCCESS"; payload: CreateRunResponse; highScore: number }
-  | { type: "FETCH_SUCCESS_CONTINUE"; payload: CreateRunResponse; streak: number; highScore: number; previousStreak: number; isNewHighScore: boolean }
+  | { type: "FETCH_SUCCESS"; payload: CreateRunResponse; carry: ScoreCarry }
   | { type: "FETCH_ERROR"; error: string }
   | { type: "SELECT_GAME"; gameId: string }
-  | { type: "REVEAL_DONE"; wasCorrect: boolean }
+  | { type: "REVEAL_DONE" }
   | { type: "TRANSITION_DONE" }
   | { type: "SWAP_DONE" }
-  | { type: "STAGE_INTRO_DONE" }
-  | { type: "PLAY_AGAIN" }
-  | { type: "RESET_CONTINUE" };
+  | { type: "STAGE_INTRO_DONE" };
+
+/** Phases that auto-advance after a fixed delay. */
+const PHASE_TIMERS: Partial<Record<GameState, [number, Action]>> = {
+  REVEALING: [REVEAL_DELAY_MS, { type: "REVEAL_DONE" }],
+  CORRECT: [TRANSITION_DELAY_MS, { type: "TRANSITION_DONE" }],
+  INCORRECT: [TRANSITION_DELAY_MS, { type: "TRANSITION_DONE" }],
+  TRANSITIONING: [SWAP_DELAY_MS, { type: "SWAP_DONE" }],
+  ROUND_INTRO: [STAGE_INTRO_DELAY_MS, { type: "STAGE_INTRO_DONE" }]
+};
 
 function getInitialState(): State {
   return {
@@ -64,7 +70,6 @@ function getInitialState(): State {
     runId: null,
     signedRunToken: null,
     games: {},
-    challengerQueue: [],
     roundPairs: [],
     leftGame: null,
     rightGame: null,
@@ -74,30 +79,8 @@ function getInitialState(): State {
     highScore: 0,
     isNewHighScore: false,
     selections: [],
-    startedAt: null,
     error: null
   };
-}
-
-function getIssuedRoundPairs(payload: CreateRunResponse): RunPair[] {
-  if (payload.roundPairs.length > 0) {
-    return payload.roundPairs;
-  }
-
-  return [
-    {
-      round: 1,
-      leftGameId: payload.initialPair.leftGameId,
-      rightGameId: payload.initialPair.rightGameId,
-      bucket: "cluster:opening"
-    },
-    ...payload.challengerQueue.map((challenger) => ({
-      round: challenger.round,
-      leftGameId: payload.initialPair.leftGameId,
-      rightGameId: challenger.gameId,
-      bucket: challenger.bucket
-    }))
-  ];
 }
 
 function getRoundPairGames(
@@ -114,60 +97,38 @@ function getRoundPairGames(
   };
 }
 
+/** Ties count as correct for either pick. */
+function isCorrectPick(leftGame: RunGame, rightGame: RunGame, gameId: string): boolean {
+  if (leftGame.snapshotScore === rightGame.snapshotScore) return true;
+  const correctId =
+    leftGame.snapshotScore > rightGame.snapshotScore ? leftGame.id : rightGame.id;
+  return gameId === correctId;
+}
+
+function readStoredHighScore(): number {
+  return parseInt(localStorage.getItem(HIGH_SCORE_KEY) ?? "", 10) || 0;
+}
+
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "FETCH_START":
-      return { ...getInitialState(), phase: "LOADING" };
+      return getInitialState();
 
     case "FETCH_SUCCESS": {
-      const { payload, highScore } = action;
-      const roundPairs = getIssuedRoundPairs(payload);
-      const { leftGame, rightGame } = getRoundPairGames(payload.games, roundPairs, 1, []);
+      const { payload, carry } = action;
+      const { leftGame, rightGame } = getRoundPairGames(payload.games, payload.roundPairs, 1, []);
 
       return {
         ...getInitialState(),
+        ...carry,
         phase: "AWAITING_CHOICE",
         runId: payload.runId,
         signedRunToken: payload.signedRunToken,
         games: payload.games,
-        challengerQueue: payload.challengerQueue,
-        roundPairs,
+        roundPairs: payload.roundPairs,
         leftGame,
         rightGame,
-        currentRound: 1,
-        streak: 0,
-        previousStreak: highScore,
-        highScore,
-        isNewHighScore: false,
-        selections: [],
-        startedAt: Date.now(),
-        error: null
-      };
-    }
-
-    case "FETCH_SUCCESS_CONTINUE": {
-      const { payload } = action;
-      const roundPairs = getIssuedRoundPairs(payload);
-      const { leftGame, rightGame } = getRoundPairGames(payload.games, roundPairs, 1, []);
-
-      return {
-        ...getInitialState(),
-        phase: "AWAITING_CHOICE",
-        runId: payload.runId,
-        signedRunToken: payload.signedRunToken,
-        games: payload.games,
-        challengerQueue: payload.challengerQueue,
-        roundPairs,
-        leftGame,
-        rightGame,
-        currentRound: 1,
-        streak: action.streak,
-        previousStreak: action.previousStreak,
-        highScore: action.highScore,
-        isNewHighScore: action.isNewHighScore,
-        selections: [],
-        startedAt: Date.now(),
-        error: null
+        currentRound: 1
       };
     }
 
@@ -193,43 +154,28 @@ function reducer(state: State, action: Action): State {
     }
 
     case "REVEAL_DONE": {
-      if (state.phase !== "REVEALING") return state;
-
-      if (action.wasCorrect) {
-        const newStreak = state.streak + 1;
-        const newHighScore = Math.max(state.highScore, newStreak);
-        const isNewHighScore = newStreak > state.previousStreak;
-
-        return {
-          ...state,
-          phase: "CORRECT",
-          streak: newStreak,
-          highScore: newHighScore,
-          isNewHighScore
-        };
+      const lastSelection = state.selections[state.selections.length - 1];
+      if (state.phase !== "REVEALING" || !lastSelection || !state.leftGame || !state.rightGame) {
+        return state;
       }
 
+      if (!isCorrectPick(state.leftGame, state.rightGame, lastSelection.pickedGameId)) {
+        return { ...state, phase: "INCORRECT" };
+      }
+
+      const newStreak = state.streak + 1;
       return {
         ...state,
-        phase: "INCORRECT"
+        phase: "CORRECT",
+        streak: newStreak,
+        highScore: Math.max(state.highScore, newStreak),
+        isNewHighScore: newStreak > state.previousStreak
       };
     }
 
     case "TRANSITION_DONE": {
-      if (state.phase === "CORRECT") {
-        return {
-          ...state,
-          phase: "TRANSITIONING"
-        };
-      }
-
-      if (state.phase === "INCORRECT") {
-        return {
-          ...state,
-          phase: "GAME_OVER"
-        };
-      }
-
+      if (state.phase === "CORRECT") return { ...state, phase: "TRANSITIONING" };
+      if (state.phase === "INCORRECT") return { ...state, phase: "GAME_OVER" };
       return state;
     }
 
@@ -237,10 +183,7 @@ function reducer(state: State, action: Action): State {
       if (state.phase !== "TRANSITIONING") return state;
 
       if (state.currentRound >= MAX_TOURNAMENT_ROUNDS) {
-        return {
-          ...state,
-          phase: "TOURNAMENT_COMPLETE"
-        };
+        return { ...state, phase: "TOURNAMENT_COMPLETE" };
       }
 
       const nextRound = state.currentRound + 1;
@@ -260,26 +203,9 @@ function reducer(state: State, action: Action): State {
       };
     }
 
-    case "STAGE_INTRO_DONE": {
+    case "STAGE_INTRO_DONE":
       if (state.phase !== "ROUND_INTRO") return state;
-      return {
-        ...state,
-        phase: "AWAITING_CHOICE"
-      };
-    }
-
-    case "RESET_CONTINUE":
-      return {
-        ...getInitialState(),
-        phase: "LOADING",
-        streak: state.streak,
-        previousStreak: state.previousStreak,
-        highScore: state.highScore,
-        isNewHighScore: state.isNewHighScore
-      };
-
-    case "PLAY_AGAIN":
-      return { ...getInitialState(), phase: "LOADING" };
+      return { ...state, phase: "AWAITING_CHOICE" };
 
     default:
       return state;
@@ -303,8 +229,6 @@ export type UseGameReturn = {
   selections: RunSelection[];
   runId: string | null;
   signedRunToken: string | null;
-  startedAt: number | null;
-  challengerQueue: RunChallenger[];
   roundPairs: RunPair[];
   games: Record<string, RunGame>;
   selectGame: (gameId: string) => void;
@@ -315,17 +239,19 @@ export type UseGameReturn = {
 export function useGame(): UseGameReturn {
   const [state, dispatch] = useReducer(reducer, undefined, getInitialState);
   const fetchRef = useRef(false);
-  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stageIntroTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchRun = useCallback(async () => {
+  /** Load a run, skipping the loading state entirely when a warmed run is ready. */
+  const loadRun = useCallback(async (getCarry: () => ScoreCarry) => {
+    const warmRun = takeWarmRunIfReady();
+    if (warmRun) {
+      dispatch({ type: "FETCH_SUCCESS", payload: warmRun, carry: getCarry() });
+      return;
+    }
+
     dispatch({ type: "FETCH_START" });
     try {
-      const data: CreateRunResponse = await consumeWarmRun();
-      const stored = typeof window !== "undefined" ? localStorage.getItem(HIGH_SCORE_KEY) : null;
-      const highScore = stored ? parseInt(stored, 10) || 0 : 0;
-      dispatch({ type: "FETCH_SUCCESS", payload: data, highScore });
+      const payload = await consumeWarmRun();
+      dispatch({ type: "FETCH_SUCCESS", payload, carry: getCarry() });
     } catch (err) {
       dispatch({
         type: "FETCH_ERROR",
@@ -334,148 +260,72 @@ export function useGame(): UseGameReturn {
     }
   }, []);
 
+  const playAgain = useCallback(() => {
+    void loadRun(() => {
+      const highScore = readStoredHighScore();
+      return { streak: 0, previousStreak: highScore, highScore, isNewHighScore: false };
+    });
+  }, [loadRun]);
+
   // Initial fetch on mount
   useEffect(() => {
     if (!fetchRef.current) {
       fetchRef.current = true;
-      fetchRun();
+      playAgain();
     }
-  }, [fetchRun]);
+  }, [playAgain]);
 
-  // Determine correctness for the current pick
-  const isCorrectPick = useCallback(
-    (gameId: string): boolean => {
-      if (!state.leftGame || !state.rightGame) return false;
-      if (state.leftGame.snapshotScore === state.rightGame.snapshotScore) return true;
-      const correctId =
-        state.leftGame.snapshotScore > state.rightGame.snapshotScore
-          ? state.leftGame.id
-          : state.rightGame.id;
-      return gameId === correctId;
-    },
-    [state.leftGame, state.rightGame]
-  );
-
-  // Handle REVEALING → CORRECT/INCORRECT timeout
+  // Auto-advance timed phases
   useEffect(() => {
-    if (state.phase === "REVEALING") {
-      const lastSelection = state.selections[state.selections.length - 1];
-      if (!lastSelection) return;
-      const wasCorrect = isCorrectPick(lastSelection.pickedGameId);
-
-      revealTimerRef.current = setTimeout(() => {
-        dispatch({ type: "REVEAL_DONE", wasCorrect });
-      }, REVEAL_DELAY_MS);
-
-      return () => {
-        if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
-      };
-    }
-  }, [state.phase, state.selections, isCorrectPick]);
-
-  // Handle CORRECT → TRANSITIONING, INCORRECT → GAME_OVER
-  useEffect(() => {
-    if (state.phase === "CORRECT" || state.phase === "INCORRECT") {
-      transitionTimerRef.current = setTimeout(() => {
-        dispatch({ type: "TRANSITION_DONE" });
-      }, TRANSITION_DELAY_MS);
-
-      return () => {
-        if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
-      };
-    }
+    const timer = PHASE_TIMERS[state.phase];
+    if (!timer) return;
+    const [delayMs, action] = timer;
+    const timeoutId = setTimeout(() => dispatch(action), delayMs);
+    return () => clearTimeout(timeoutId);
   }, [state.phase]);
 
-  // Handle TRANSITIONING → AWAITING_CHOICE (card swap animation window)
-  const swapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Preload covers for the next round so the swap never shows a blank card
+  const { currentRound, roundPairs, selections, games } = state;
   useEffect(() => {
-    if (state.phase === "TRANSITIONING") {
-      swapTimerRef.current = setTimeout(() => {
-        dispatch({ type: "SWAP_DONE" });
-      }, SWAP_DELAY_MS);
-
-      return () => {
-        if (swapTimerRef.current) clearTimeout(swapTimerRef.current);
-      };
+    const nextPair = getBracketRoundPair(currentRound + 1, roundPairs, selections);
+    if (!nextPair) return;
+    for (const id of [nextPair.leftGameId, nextPair.rightGameId]) {
+      const url = games[id]?.imageUrl;
+      if (url) preloadCover(url);
     }
-  }, [state.phase]);
-
-  useEffect(() => {
-    if (state.phase === "ROUND_INTRO") {
-      stageIntroTimerRef.current = setTimeout(() => {
-        dispatch({ type: "STAGE_INTRO_DONE" });
-      }, STAGE_INTRO_DELAY_MS);
-
-      return () => {
-        if (stageIntroTimerRef.current) clearTimeout(stageIntroTimerRef.current);
-      };
-    }
-  }, [state.phase]);
+  }, [currentRound, roundPairs, selections, games]);
 
   // Persist high score to localStorage
   useEffect(() => {
-    if (state.highScore > 0 && typeof window !== "undefined") {
+    if (state.highScore > 0) {
       localStorage.setItem(HIGH_SCORE_KEY, String(state.highScore));
     }
   }, [state.highScore]);
 
-  const selectGame = useCallback(
-    (gameId: string) => {
-      if (state.phase !== "AWAITING_CHOICE") return;
-      dispatch({ type: "SELECT_GAME", gameId });
-    },
-    [state.phase]
-  );
+  const selectGame = useCallback((gameId: string) => {
+    dispatch({ type: "SELECT_GAME", gameId });
+  }, []);
 
-  const continueAfterReset = useCallback(async () => {
-    const carryStreak = state.streak;
-    const carryHighScore = state.highScore;
-    const carryPreviousStreak = state.previousStreak;
-    const carryIsNewHighScore = state.isNewHighScore;
-
-    dispatch({ type: "RESET_CONTINUE" });
-    try {
-      const data: CreateRunResponse = await consumeWarmRun();
-      dispatch({
-        type: "FETCH_SUCCESS_CONTINUE",
-        payload: data,
-        streak: carryStreak,
-        highScore: carryHighScore,
-        previousStreak: carryPreviousStreak,
-        isNewHighScore: carryIsNewHighScore
-      });
-    } catch (err) {
-      dispatch({
-        type: "FETCH_ERROR",
-        error: err instanceof Error ? err.message : "Failed to start game"
-      });
-    }
-  }, [state.streak, state.highScore, state.previousStreak, state.isNewHighScore]);
-
-  const playAgain = useCallback(() => {
-    fetchRef.current = false;
-    dispatch({ type: "PLAY_AGAIN" });
-    fetchRef.current = true;
-    fetchRun();
-  }, [fetchRun]);
+  const { streak, previousStreak, highScore, isNewHighScore } = state;
+  const continueAfterReset = useCallback(() => {
+    void loadRun(() => ({ streak, previousStreak, highScore, isNewHighScore }));
+  }, [loadRun, streak, previousStreak, highScore, isNewHighScore]);
 
   return {
     phase: state.phase,
     leftGame: state.leftGame,
     rightGame: state.rightGame,
-    currentRound: state.currentRound,
-    streak: state.streak,
-    previousStreak: state.previousStreak,
-    highScore: state.highScore,
-    isNewHighScore: state.isNewHighScore,
+    currentRound,
+    streak,
+    previousStreak,
+    highScore,
+    isNewHighScore,
     error: state.error,
-    selections: state.selections,
+    selections,
     runId: state.runId,
     signedRunToken: state.signedRunToken,
-    startedAt: state.startedAt,
-    challengerQueue: state.challengerQueue,
-    roundPairs: state.roundPairs,
-    games: state.games,
+    roundPairs,
+    games,
     selectGame,
     playAgain,
     continueAfterReset

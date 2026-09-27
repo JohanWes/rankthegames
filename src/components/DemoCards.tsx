@@ -115,6 +115,7 @@ function DemoCard({
             fill
             className="object-cover"
             sizes="(min-width: 1024px) 400px, (min-width: 768px) 300px, 200px"
+            priority
             onError={() => setImgError(true)}
           />
         ) : (

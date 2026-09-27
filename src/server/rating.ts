@@ -47,13 +47,10 @@ export function getRatingDelta(input: RatingInput): RatingDelta {
   const loserScore = loserId === leftGameId ? leftScore : rightScore;
   const wasUpset = !isTie && pickedGameId !== expectedWinnerId;
 
-  let rawDelta: number;
-
-  if (wasUpset) {
-    rawDelta = RATING_CONSTANTS.K_UPSET * (1 - 1 / (1 + gap / RATING_CONSTANTS.S_UPSET));
-  } else {
-    rawDelta = RATING_CONSTANTS.K_EXPECTED / (1 + gap / RATING_CONSTANTS.S_EXPECTED);
-  }
+  const expectedRaw = RATING_CONSTANTS.K_EXPECTED / (1 + gap / RATING_CONSTANTS.S_EXPECTED);
+  const upsetRaw = RATING_CONSTANTS.K_UPSET * (1 - 1 / (1 + gap / RATING_CONSTANTS.S_UPSET));
+  // An upset never earns less than the equivalent expected win, so near-ties stay symmetric.
+  const rawDelta = wasUpset ? Math.max(expectedRaw, upsetRaw) : expectedRaw;
 
   const confidenceMultiplier = getConfidenceMultiplier(
     input.leftTotalMatches,

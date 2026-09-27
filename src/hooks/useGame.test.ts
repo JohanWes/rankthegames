@@ -45,9 +45,9 @@ async function playCurrentCorrectRound(result: { current: ReturnType<typeof useG
     leftGame.snapshotScore >= rightGame.snapshotScore ? leftGame.id : rightGame.id;
 
   act(() => result.current.selectGame(pickedGameId));
-  await act(async () => await vi.advanceTimersByTimeAsync(900));
-  await act(async () => await vi.advanceTimersByTimeAsync(1100));
-  await act(async () => await vi.advanceTimersByTimeAsync(500));
+  await act(async () => await vi.advanceTimersByTimeAsync(400));
+  await act(async () => await vi.advanceTimersByTimeAsync(700));
+  await act(async () => await vi.advanceTimersByTimeAsync(150));
 
   if (result.current.phase === "ROUND_INTRO") {
     await act(async () => await vi.advanceTimersByTimeAsync(1200));
@@ -78,7 +78,7 @@ describe("useGame", () => {
   });
 
   it("consumes a warmed run instead of issuing a second bootstrap fetch", async () => {
-    mockFetchSuccess();
+    mockFetchSuccess(createMockRunResponse({ expiresAt: new Date(Date.now() + 2 * 3_600_000).toISOString() }));
 
     await warmRunPrefetch();
     expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -91,6 +91,19 @@ describe("useGame", () => {
 
     expect(result.current.phase).toBe("AWAITING_CHOICE");
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards a warmed run that is close to expiry", async () => {
+    mockFetchSuccess(createMockRunResponse({ expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() }));
+
+    await warmRunPrefetch();
+    renderHook(() => useGame());
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
   it("correct pick flows through REVEALING → CORRECT → AWAITING_CHOICE with new pair", async () => {
@@ -108,22 +121,22 @@ describe("useGame", () => {
     });
     expect(result.current.phase).toBe("REVEALING");
 
-    // Advance reveal timer (900ms)
+    // Advance reveal timer (400ms)
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(900);
+      await vi.advanceTimersByTimeAsync(400);
     });
     expect(result.current.phase).toBe("CORRECT");
     expect(result.current.streak).toBe(1);
 
-    // Advance transition timer (1100ms) → TRANSITIONING
+    // Advance transition timer (700ms) → TRANSITIONING
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1100);
+      await vi.advanceTimersByTimeAsync(700);
     });
     expect(result.current.phase).toBe("TRANSITIONING");
 
-    // Advance swap timer (500ms) → AWAITING_CHOICE
+    // Advance swap timer (150ms) → AWAITING_CHOICE
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(150);
     });
     expect(result.current.phase).toBe("AWAITING_CHOICE");
     expect(result.current.currentRound).toBe(2);
@@ -148,12 +161,12 @@ describe("useGame", () => {
     expect(result.current.phase).toBe("REVEALING");
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(900);
+      await vi.advanceTimersByTimeAsync(400);
     });
     expect(result.current.phase).toBe("INCORRECT");
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1100);
+      await vi.advanceTimersByTimeAsync(700);
     });
     expect(result.current.phase).toBe("GAME_OVER");
     expect(result.current.streak).toBe(0);
@@ -169,18 +182,18 @@ describe("useGame", () => {
 
     // Round 1: pick g1 (correct)
     act(() => result.current.selectGame("g1"));
-    await act(async () => await vi.advanceTimersByTimeAsync(900));
+    await act(async () => await vi.advanceTimersByTimeAsync(400));
     expect(result.current.streak).toBe(1);
-    await act(async () => await vi.advanceTimersByTimeAsync(1100));
-    await act(async () => await vi.advanceTimersByTimeAsync(500));
+    await act(async () => await vi.advanceTimersByTimeAsync(700));
+    await act(async () => await vi.advanceTimersByTimeAsync(150));
 
     // Round 2: g3 (580) vs g4 (570). Pick g3 (correct)
     expect(result.current.leftGame?.id).toBe("g3");
     act(() => result.current.selectGame("g3"));
-    await act(async () => await vi.advanceTimersByTimeAsync(900));
+    await act(async () => await vi.advanceTimersByTimeAsync(400));
     expect(result.current.streak).toBe(2);
-    await act(async () => await vi.advanceTimersByTimeAsync(1100));
-    await act(async () => await vi.advanceTimersByTimeAsync(500));
+    await act(async () => await vi.advanceTimersByTimeAsync(700));
+    await act(async () => await vi.advanceTimersByTimeAsync(150));
 
     expect(result.current.currentRound).toBe(3);
   });
@@ -195,8 +208,8 @@ describe("useGame", () => {
 
     // Make a correct pick
     act(() => result.current.selectGame("g1"));
-    await act(async () => await vi.advanceTimersByTimeAsync(900));
-    await act(async () => await vi.advanceTimersByTimeAsync(1100));
+    await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(700));
 
     expect(result.current.highScore).toBe(1);
     expect(localStorage.getItem("rankthegames_highscore")).toBe("1");
@@ -225,8 +238,8 @@ describe("useGame", () => {
 
     // Make a pick and go to game over
     act(() => result.current.selectGame("g2"));
-    await act(async () => await vi.advanceTimersByTimeAsync(900));
-    await act(async () => await vi.advanceTimersByTimeAsync(1100));
+    await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(700));
     expect(result.current.phase).toBe("GAME_OVER");
 
     // Play again
@@ -323,17 +336,17 @@ describe("useGame", () => {
 
     // Round 1: pick g1 (left, correct). Round 2 should use the issued g3 vs g4 pair.
     act(() => result.current.selectGame("g1"));
-    await act(async () => await vi.advanceTimersByTimeAsync(900));
-    await act(async () => await vi.advanceTimersByTimeAsync(1100));
-    await act(async () => await vi.advanceTimersByTimeAsync(500));
+    await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(700));
+    await act(async () => await vi.advanceTimersByTimeAsync(150));
     expect(result.current.leftGame?.id).toBe("g3");
     expect(result.current.rightGame?.id).toBe("g4");
 
     // Round 2: pick g3 correctly. Round 3 is issued as g1 vs g5, not g3 vs g5.
     act(() => result.current.selectGame("g3"));
-    await act(async () => await vi.advanceTimersByTimeAsync(900));
-    await act(async () => await vi.advanceTimersByTimeAsync(1100));
-    await act(async () => await vi.advanceTimersByTimeAsync(500));
+    await act(async () => await vi.advanceTimersByTimeAsync(400));
+    await act(async () => await vi.advanceTimersByTimeAsync(700));
+    await act(async () => await vi.advanceTimersByTimeAsync(150));
     expect(result.current.leftGame?.id).toBe("g1");
     expect(result.current.rightGame?.id).toBe("g5");
   });

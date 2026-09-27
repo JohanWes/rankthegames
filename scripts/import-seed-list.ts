@@ -5,6 +5,11 @@ import { loadSeedEntries, parseCliArgs } from "./_shared.ts";
 async function main() {
   const args = parseCliArgs();
   const seedEntries = await loadSeedEntries(args.values.file);
+
+  if (seedEntries.length === 0) {
+    throw new Error("Seed file produced zero entries; refusing to continue (check the file format).");
+  }
+
   const db = await getDb();
   const collections = getCollections(db);
   const now = new Date();
