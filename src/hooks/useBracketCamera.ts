@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { WORLD_WIDTH, WORLD_HEIGHT, MAX_ZOOM, type FocusPoint } from "@/lib/bracket-layout";
 
@@ -28,9 +28,9 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function getViewportSize(element: HTMLDivElement | null): ViewportSize | null {
-  const rect = element?.getBoundingClientRect();
-  if (!rect || rect.width === 0 || rect.height === 0) return null;
-  return { width: rect.width, height: rect.height };
+  // clientWidth/Height ignore the overlay's open/close scale animation.
+  if (!element || element.clientWidth === 0 || element.clientHeight === 0) return null;
+  return { width: element.clientWidth, height: element.clientHeight };
 }
 
 function getFitZoom(size: ViewportSize) {
@@ -43,8 +43,12 @@ function getMinZoom(size: ViewportSize) {
   return Math.max(MIN_ZOOM_FLOOR, getFitZoom(size) * 0.82);
 }
 
+function clampZoom(zoom: number, size: ViewportSize) {
+  return clamp(zoom, getMinZoom(size), MAX_ZOOM);
+}
+
 function clampCamera(camera: Camera, size: ViewportSize): Camera {
-  const zoom = clamp(camera.zoom, getMinZoom(size), MAX_ZOOM);
+  const zoom = clampZoom(camera.zoom, size);
   const scaledWidth = WORLD_WIDTH * zoom;
   const scaledHeight = WORLD_HEIGHT * zoom;
 
@@ -66,38 +70,33 @@ function clampCamera(camera: Camera, size: ViewportSize): Camera {
   return { x, y, zoom };
 }
 
-function centerCameraOn(point: Point, zoom: number, size: ViewportSize): Camera {
-  return clampCamera(
-    {
-      x: size.width / 2 - point.x * zoom,
-      y: size.height / 2 - point.y * zoom,
-      zoom
-    },
-    size
-  );
+function getFitCamera(size: ViewportSize): Camera {
+  const zoom = clampZoom(Math.min(getFitZoom(size), 1.05), size);
+  return {
+    x: (size.width - WORLD_WIDTH * zoom) / 2,
+    y: (size.height - WORLD_HEIGHT * zoom) / 2,
+    zoom
+  };
 }
 
 function getInitialCamera(size: ViewportSize, focusPoint: Point): Camera {
-  const fitZoom = getFitZoom(size);
+  if (size.width >= 768) return getFitCamera(size);
 
-  if (size.width < 768) {
-    const mobileZoom = clamp(
-      Math.max(fitZoom, size.width / 440),
-      getMinZoom(size),
-      MAX_ZOOM
-    );
-    return centerCameraOn(focusPoint, mobileZoom, size);
-  }
+  const zoom = clampZoom(Math.max(getFitZoom(size), size.width / 440), size);
+  return {
+    x: size.width / 2 - focusPoint.x * zoom,
+    y: size.height / 2 - focusPoint.y * zoom,
+    zoom
+  };
+}
 
-  const desktopZoom = clamp(Math.min(fitZoom, 1.05), getMinZoom(size), MAX_ZOOM);
-  return clampCamera(
-    {
-      x: (size.width - WORLD_WIDTH * desktopZoom) / 2,
-      y: (size.height - WORLD_HEIGHT * desktopZoom) / 2,
-      zoom: desktopZoom
-    },
-    size
-  );
+/** Camera that keeps `worldPoint` under the screen-space `point` at `zoom`. */
+function anchorCamera(worldPoint: Point, point: Point, zoom: number): Camera {
+  return {
+    x: point.x - worldPoint.x * zoom,
+    y: point.y - worldPoint.y * zoom,
+    zoom
+  };
 }
 
 function getTouchDistance(touches: React.TouchList) {
@@ -129,6 +128,9 @@ type UseBracketCameraOptions = {
 export function useBracketCamera({ active, focusPoint }: UseBracketCameraOptions) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<Camera>({ x: 0, y: 0, zoom: 1 });
+  // Read at reset time only, so round changes while open don't discard the user's view.
+  const focusPointRef = useRef(focusPoint);
+  focusPointRef.current = focusPoint;
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -142,21 +144,20 @@ export function useBracketCamera({ active, focusPoint }: UseBracketCameraOptions
   >(null);
   const [camera, setCameraState] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
   const [isDragging, setIsDragging] = useState(false);
+  // True only for button-driven moves, which get a short CSS transition.
+  const [isAnimated, setIsAnimated] = useState(false);
 
-  const setCamera = useCallback((nextCamera: Camera | ((camera: Camera) => Camera)) => {
-    const size = getViewportSize(viewportRef.current);
-    setCameraState((previousCamera) => {
-      const rawCamera = typeof nextCamera === "function" ? nextCamera(previousCamera) : nextCamera;
-      const clampedCamera = size ? clampCamera(rawCamera, size) : rawCamera;
-      cameraRef.current = clampedCamera;
-      return clampedCamera;
-    });
-  }, []);
-
-  const setCameraForViewport = useCallback(
-    (nextCamera: Camera | ((camera: Camera) => Camera), size: ViewportSize) => {
+  const setCamera = useCallback(
+    (
+      nextCamera: Camera | ((camera: Camera, size: ViewportSize) => Camera),
+      animated = false
+    ) => {
+      const size = getViewportSize(viewportRef.current);
+      if (!size) return;
+      setIsAnimated(animated);
       setCameraState((previousCamera) => {
-        const rawCamera = typeof nextCamera === "function" ? nextCamera(previousCamera) : nextCamera;
+        const rawCamera =
+          typeof nextCamera === "function" ? nextCamera(previousCamera, size) : nextCamera;
         const clampedCamera = clampCamera(rawCamera, size);
         cameraRef.current = clampedCamera;
         return clampedCamera;
@@ -165,99 +166,65 @@ export function useBracketCamera({ active, focusPoint }: UseBracketCameraOptions
     []
   );
 
-  const resetToInitialView = useCallback(() => {
-    const size = getViewportSize(viewportRef.current);
-    if (!size) return;
-    setCameraForViewport(getInitialCamera(size, focusPoint), size);
-  }, [focusPoint, setCameraForViewport]);
-
-  const fitWholeBracket = useCallback(() => {
-    const size = getViewportSize(viewportRef.current);
-    if (!size) return;
-    const zoom = clamp(Math.min(getFitZoom(size), 1.05), getMinZoom(size), MAX_ZOOM);
-    setCameraForViewport(
-      {
-        x: (size.width - WORLD_WIDTH * zoom) / 2,
-        y: (size.height - WORLD_HEIGHT * zoom) / 2,
-        zoom
-      },
-      size
-    );
-  }, [setCameraForViewport]);
+  const resetToInitialView = useCallback(
+    (animated: boolean) =>
+      setCamera((_, size) => getInitialCamera(size, focusPointRef.current), animated),
+    [setCamera]
+  );
 
   const zoomAtPoint = useCallback(
-    (nextZoom: number, point: Point) => {
-      setCamera((previousCamera) => {
+    (factor: number, point: Point, animated = false) => {
+      setCamera((previousCamera, size) => {
         const worldPoint = {
           x: (point.x - previousCamera.x) / previousCamera.zoom,
           y: (point.y - previousCamera.y) / previousCamera.zoom
         };
-        const size = getViewportSize(viewportRef.current);
-        const zoom = size
-          ? clamp(nextZoom, getMinZoom(size), MAX_ZOOM)
-          : clamp(nextZoom, MIN_ZOOM_FLOOR, MAX_ZOOM);
-        return {
-          x: point.x - worldPoint.x * zoom,
-          y: point.y - worldPoint.y * zoom,
-          zoom
-        };
-      });
+        return anchorCamera(worldPoint, point, clampZoom(previousCamera.zoom * factor, size));
+      }, animated);
     },
     [setCamera]
   );
 
-  const zoomFromCenter = useCallback(
-    (factor: number) => {
-      const size = getViewportSize(viewportRef.current);
-      if (!size) return;
-      zoomAtPoint(cameraRef.current.zoom * factor, {
-        x: size.width / 2,
-        y: size.height / 2
-      });
-    },
-    [zoomAtPoint]
-  );
+  const zoomFromCenter = (factor: number) => {
+    const size = getViewportSize(viewportRef.current);
+    if (!size) return;
+    zoomAtPoint(factor, { x: size.width / 2, y: size.height / 2 }, true);
+  };
 
-  // Sync cameraRef with state
-  useEffect(() => {
-    cameraRef.current = camera;
-  }, [camera]);
-
-  // Reset on open
-  useEffect(() => {
-    if (!active) return;
-    const frame = window.requestAnimationFrame(resetToInitialView);
-    return () => window.cancelAnimationFrame(frame);
+  // Fit on open, before first paint (the viewport ref is attached by now).
+  useLayoutEffect(() => {
+    if (active) resetToInitialView(false);
   }, [active, resetToInitialView]);
 
   // Handle resize
   useEffect(() => {
     if (!active) return;
 
-    function handleResize() {
-      const size = getViewportSize(viewportRef.current);
-      if (!size) return;
-      setCameraForViewport((previousCamera) => previousCamera, size);
-    }
-
+    const handleResize = () => setCamera((previousCamera) => previousCamera);
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [active, setCameraForViewport]);
+  }, [active, setCamera]);
 
-  // Wheel zoom
-  const handleWheel = useCallback(
-    (event: React.WheelEvent<HTMLDivElement>) => {
+  // Wheel / trackpad-pinch zoom. Native non-passive listener: React's onWheel is
+  // passive, so preventDefault there can't stop ctrl+wheel from zooming the page.
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!active || !element) return;
+
+    const handleWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const rect = event.currentTarget.getBoundingClientRect();
-      const point = {
+      const rect = element.getBoundingClientRect();
+      // Trackpad pinch arrives as ctrl+wheel with small deltas.
+      const sensitivity = event.ctrlKey ? 0.01 : 0.00135;
+      zoomAtPoint(Math.exp(-event.deltaY * sensitivity), {
         x: event.clientX - rect.left,
         y: event.clientY - rect.top
-      };
-      const nextZoom = cameraRef.current.zoom * Math.exp(-event.deltaY * 0.00135);
-      zoomAtPoint(nextZoom, point);
-    },
-    [zoomAtPoint]
-  );
+      });
+    };
+
+    element.addEventListener("wheel", handleWheel, { passive: false });
+    return () => element.removeEventListener("wheel", handleWheel);
+  }, [active, zoomAtPoint]);
 
   // Pointer pan (mouse / pen / single-touch)
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -294,7 +261,7 @@ export function useBracketCamera({ active, focusPoint }: UseBracketCameraOptions
     }
   }, []);
 
-  // Touch handlers (pan + pinch)
+  // Touch handlers (pan + pinch). Page scroll/zoom is blocked by `touch-none`.
   const handleTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     const rect = viewportRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -335,23 +302,23 @@ export function useBracketCamera({ active, focusPoint }: UseBracketCameraOptions
       const gesture = touchRef.current;
       if (!gesture) return;
 
-      event.preventDefault();
-
       if (event.touches.length >= 2 && gesture.mode === "pinch") {
-        const rect = viewportRef.current?.getBoundingClientRect();
-        if (!rect || gesture.distance === 0) return;
+        const element = viewportRef.current;
+        const size = getViewportSize(element);
+        if (!element || !size || gesture.distance === 0) return;
 
+        const rect = element.getBoundingClientRect();
         const midpoint = getTouchMidpoint(event.touches);
         const point = {
           x: midpoint.x - rect.left,
           y: midpoint.y - rect.top
         };
-        const nextZoom = gesture.camera.zoom * (getTouchDistance(event.touches) / gesture.distance);
-        setCamera({
-          x: point.x - gesture.anchor.x * nextZoom,
-          y: point.y - gesture.anchor.y * nextZoom,
-          zoom: nextZoom
-        });
+        // Clamp before anchoring so the content stays under the fingers at the zoom limits.
+        const zoom = clampZoom(
+          gesture.camera.zoom * (getTouchDistance(event.touches) / gesture.distance),
+          size
+        );
+        setCamera(anchorCamera(gesture.anchor, point, zoom));
         return;
       }
 
@@ -367,17 +334,25 @@ export function useBracketCamera({ active, focusPoint }: UseBracketCameraOptions
     [setCamera]
   );
 
-  const handleTouchEnd = useCallback(() => {
-    touchRef.current = null;
-    setIsDragging(false);
-  }, []);
+  const handleTouchEnd = useCallback(
+    (event: React.TouchEvent<HTMLDivElement>) => {
+      // Fingers still down (e.g. lifting one of two): restart the gesture from them.
+      if (event.touches.length > 0) {
+        handleTouchStart(event);
+        return;
+      }
+      touchRef.current = null;
+      setIsDragging(false);
+    },
+    [handleTouchStart]
+  );
 
   return {
     viewportRef,
     camera,
     isDragging,
+    isAnimated,
     handlers: {
-      onWheel: handleWheel,
       onPointerDown: handlePointerDown,
       onPointerMove: handlePointerMove,
       onPointerUp: handlePointerUp,
@@ -387,8 +362,8 @@ export function useBracketCamera({ active, focusPoint }: UseBracketCameraOptions
       onTouchEnd: handleTouchEnd,
       onTouchCancel: handleTouchEnd
     },
-    fitWholeBracket,
-    resetToInitialView,
+    fitWholeBracket: () => setCamera((_, size) => getFitCamera(size), true),
+    resetToInitialView: () => resetToInitialView(true),
     zoomIn: () => zoomFromCenter(1.22),
     zoomOut: () => zoomFromCenter(0.82)
   };

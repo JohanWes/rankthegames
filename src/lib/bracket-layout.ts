@@ -40,18 +40,15 @@ export type FocusPoint = { x: number; y: number };
 
 export type FlatNode = Pick<BracketNode, "key" | "round" | "gameId" | "eliminated" | "active" | "winner" | "x" | "y">;
 
-function nodeToFlat(node: BracketNode): FlatNode {
-  return {
-    key: node.key,
-    round: node.round,
-    gameId: node.gameId,
-    eliminated: node.eliminated,
-    active: node.active,
-    winner: node.winner,
-    x: node.x,
-    y: node.y
-  };
-}
+export const STAGE_LABELS = [
+  { label: "Openers", x: LEFT_COLUMNS[0] },
+  { label: "Winners", x: LEFT_COLUMNS[1] },
+  { label: "Quarters", x: LEFT_COLUMNS[2] },
+  { label: "Final", x: CHAMPION_X },
+  { label: "Quarters", x: RIGHT_COLUMNS[2] },
+  { label: "Winners", x: RIGHT_COLUMNS[1] },
+  { label: "Openers", x: RIGHT_COLUMNS[0] }
+] as const;
 
 function getSelection(selections: RunSelection[], round: number) {
   return selections.find((selection) => selection.round === round) ?? null;
@@ -182,6 +179,13 @@ function buildBracketTree(
     const childB = allNodes.get(`w${sourceB}`);
     if (childA && childB) {
       node.children = [childA, childB];
+      const selection = getSelection(selections, advRound);
+      if (selection) {
+        for (const child of node.children) {
+          child.eliminated = child.gameId !== selection.pickedGameId;
+          child.winner = !child.eliminated;
+        }
+      }
     }
     allNodes.set(node.key, node);
   }
@@ -291,7 +295,7 @@ function buildBracketTree(
   }
 
   return {
-    nodes: Array.from(allNodes.values()).map(nodeToFlat),
+    nodes: Array.from(allNodes.values()),
     connectors,
     focusPoint
   };

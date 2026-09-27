@@ -1,8 +1,13 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { getLeaderboard } from "@/server/leaderboard";
 
 export const revalidate = 30;
+
+export const metadata: Metadata = {
+  title: "Leaderboard · RankTheGames"
+};
 
 const RANK_ACCENT: Record<number, string> = {
   1: "text-gold",
@@ -41,11 +46,12 @@ export default async function LeaderboardPage() {
         {items.map((item, index) => {
           const rank = index + 1;
           const accentClass = RANK_ACCENT[rank] ?? "text-text-muted";
+          const coverUrl = item.imageUrl ?? item.thumbUrl;
 
           return (
             <div
               key={item.id}
-              className="glass flex items-center gap-4 rounded-xl px-4 py-3"
+              className="flex items-center gap-4 rounded-xl border border-white/8 bg-bg-elevated/70 px-4 py-3"
             >
               {/* Rank */}
               <span
@@ -56,9 +62,9 @@ export default async function LeaderboardPage() {
 
               {/* Thumbnail */}
               <div className="relative h-16 w-12 flex-shrink-0 overflow-hidden rounded-lg bg-bg-elevated">
-                {item.thumbUrl ? (
+                {coverUrl ? (
                   <Image
-                    src={item.thumbUrl}
+                    src={coverUrl}
                     alt={item.name}
                     fill
                     className="object-cover"

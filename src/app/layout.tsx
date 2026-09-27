@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Teko } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
@@ -18,6 +18,10 @@ export const metadata: Metadata = {
   title: "RankTheGames — Which Game Is More Popular?",
   description:
     "A higher-lower arcade game where you guess which video game is more popular. How long can you keep your streak alive?"
+};
+
+export const viewport: Viewport = {
+  themeColor: "#070B14"
 };
 
 type RootLayoutProps = Readonly<{

@@ -11,22 +11,12 @@ import {
   CARD_HEIGHT,
   WORLD_WIDTH,
   WORLD_HEIGHT,
-  MAX_ZOOM,
+  STAGE_LABELS,
   getCoverUrl,
   type FlatNode
 } from "@/lib/bracket-layout";
 import { useBracketCamera } from "@/hooks/useBracketCamera";
 import type { RunGame, RunPair, RunSelection } from "@/lib/types";
-
-const STAGE_LABELS = [
-  { label: "Openers", x: 105 },
-  { label: "Winners", x: 270 },
-  { label: "Quarters", x: 450 },
-  { label: "Final", x: 770 },
-  { label: "Quarters", x: 1090 },
-  { label: "Winners", x: 1270 },
-  { label: "Openers", x: 1435 }
-] as const;
 
 type BracketOverlayProps = {
   open: boolean;
@@ -55,13 +45,13 @@ function Miniature({ node, game }: { node: FlatNode; game: RunGame }) {
       <motion.div
         className={[
           "relative h-full w-full overflow-hidden rounded-lg border bg-bg-elevated shadow-[0_20px_40px_rgba(0,0,0,0.4)]",
-          "transition-[border-color,filter,opacity,box-shadow] duration-200",
+          "transition-[border-color,filter,box-shadow] duration-200",
           node.active
             ? "border-accent shadow-[0_0_0_2px_rgba(245,158,11,0.18),0_0_32px_rgba(245,158,11,0.4)]"
             : node.winner
               ? "border-correct/80 shadow-[0_0_22px_rgba(34,197,94,0.22)]"
               : "border-white/16",
-          node.eliminated ? "opacity-40 grayscale" : "opacity-100"
+          node.eliminated ? "grayscale" : ""
         ].join(" ")}
         initial={{ opacity: 0, scale: 0.92 }}
         animate={{ opacity: node.eliminated ? 0.4 : 1, scale: 1 }}
@@ -73,7 +63,7 @@ function Miniature({ node, game }: { node: FlatNode; game: RunGame }) {
             alt=""
             fill
             draggable={false}
-            sizes={`${CARD_WIDTH * MAX_ZOOM}px`}
+            sizes="160px"
             className="pointer-events-none object-cover"
           />
         ) : (
@@ -129,6 +119,7 @@ export function BracketOverlay({
     viewportRef,
     camera,
     isDragging,
+    isAnimated,
     handlers,
     fitWholeBracket,
     resetToInitialView,
@@ -137,6 +128,76 @@ export function BracketOverlay({
   } = useBracketCamera({ active: open, focusPoint });
 
   const currentPair = getBracketRoundPair(currentRound, openingPairs, selections);
+
+  // Pan/zoom only changes the world transform; keep the ~300 world elements
+  // out of those re-renders.
+  const world = useMemo(
+    () => (
+      <>
+        {/* World background */}
+        <div className="absolute inset-0 rounded-[28px] border border-white/8 bg-bg-base/36 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03),0_40px_120px_rgba(0,0,0,0.28)]" />
+
+        {/* Stage labels */}
+        {STAGE_LABELS.map(({ label, x }) => (
+          <div
+            key={`${label}-${x}`}
+            className="absolute top-7 -translate-x-1/2 font-display text-[18px] font-semibold uppercase tracking-[0.22em] text-text-muted"
+            style={{ left: x }}
+          >
+            {label}
+          </div>
+        ))}
+
+        {/* Connector lines */}
+        <svg
+          viewBox={`0 0 ${WORLD_WIDTH} ${WORLD_HEIGHT}`}
+          className="absolute inset-0 h-full w-full"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient id="bracket-line" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0%" stopColor="rgba(240,246,252,0.32)" />
+              <stop offset="50%" stopColor="rgba(245,158,11,0.55)" />
+              <stop offset="100%" stopColor="rgba(240,246,252,0.32)" />
+            </linearGradient>
+          </defs>
+          {connectors.map((line, index) => (
+            <g key={`${line.x1}-${line.y1}-${index}`}>
+              <line
+                x1={line.x1}
+                y1={line.y1}
+                x2={line.x2}
+                y2={line.y2}
+                stroke="rgba(0,0,0,0.42)"
+                strokeWidth="9"
+                strokeLinecap="round"
+              />
+              <line
+                x1={line.x1}
+                y1={line.y1}
+                x2={line.x2}
+                y2={line.y2}
+                stroke="url(#bracket-line)"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+              />
+            </g>
+          ))}
+        </svg>
+
+        {/* Game nodes */}
+        {nodes.map((node) => {
+          const game = node.gameId ? (games[node.gameId] ?? null) : null;
+          return game ? (
+            <Miniature key={node.key} node={node} game={game} />
+          ) : (
+            <EmptySlot key={node.key} node={node} />
+          );
+        })}
+      </>
+    ),
+    [nodes, connectors, games]
+  );
 
   // Escape key to close
   useEffect(() => {
@@ -171,7 +232,7 @@ export function BracketOverlay({
                 Bracket
               </p>
               <p className="mt-0.5 text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
-                Round {currentPair ? currentRound : Math.min(currentRound, 15)} / 15
+                Round {Math.min(currentRound, 15)} / 15
               </p>
             </div>
 
@@ -246,7 +307,7 @@ export function BracketOverlay({
                 height: WORLD_HEIGHT,
                 transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.zoom})`,
                 transformOrigin: "0 0",
-                transition: isDragging ? "none" : "transform 110ms ease-out",
+                transition: isAnimated ? "transform 110ms ease-out" : "none",
                 willChange: "transform"
               }}
               aria-label={
@@ -255,66 +316,7 @@ export function BracketOverlay({
                   : "Tournament bracket"
               }
             >
-              {/* World background */}
-              <div className="absolute inset-0 rounded-[28px] border border-white/8 bg-bg-base/36 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03),0_40px_120px_rgba(0,0,0,0.28)]" />
-
-              {/* Stage labels */}
-              {STAGE_LABELS.map(({ label, x }) => (
-                <div
-                  key={`${label}-${x}`}
-                  className="absolute top-7 -translate-x-1/2 font-display text-[18px] font-semibold uppercase tracking-[0.22em] text-text-muted"
-                  style={{ left: x }}
-                >
-                  {label}
-                </div>
-              ))}
-
-              {/* Connector lines */}
-              <svg
-                viewBox={`0 0 ${WORLD_WIDTH} ${WORLD_HEIGHT}`}
-                className="absolute inset-0 h-full w-full"
-                aria-hidden="true"
-              >
-                <defs>
-                  <linearGradient id="bracket-line" x1="0" x2="1" y1="0" y2="0">
-                    <stop offset="0%" stopColor="rgba(240,246,252,0.32)" />
-                    <stop offset="50%" stopColor="rgba(245,158,11,0.55)" />
-                    <stop offset="100%" stopColor="rgba(240,246,252,0.32)" />
-                  </linearGradient>
-                </defs>
-                {connectors.map((line, index) => (
-                  <g key={`${line.x1}-${line.y1}-${index}`}>
-                    <line
-                      x1={line.x1}
-                      y1={line.y1}
-                      x2={line.x2}
-                      y2={line.y2}
-                      stroke="rgba(0,0,0,0.42)"
-                      strokeWidth="9"
-                      strokeLinecap="round"
-                    />
-                    <line
-                      x1={line.x1}
-                      y1={line.y1}
-                      x2={line.x2}
-                      y2={line.y2}
-                      stroke="url(#bracket-line)"
-                      strokeWidth="3.5"
-                      strokeLinecap="round"
-                    />
-                  </g>
-                ))}
-              </svg>
-
-              {/* Game nodes */}
-              {nodes.map((node) => {
-                const game = node.gameId ? (games[node.gameId] ?? null) : null;
-                return game ? (
-                  <Miniature key={node.key} node={node} game={game} />
-                ) : (
-                  <EmptySlot key={node.key} node={node} />
-                );
-              })}
+              {world}
             </div>
           </motion.div>
         </motion.div>
