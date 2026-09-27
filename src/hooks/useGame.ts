@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import {
   getBracketRoundPair,
+  isCorrectPick,
   MAX_TOURNAMENT_ROUNDS,
   shouldShowStageIntro
 } from "@/lib/bracket";
@@ -95,14 +96,6 @@ function getRoundPairGames(
     leftGame: roundPair ? games[roundPair.leftGameId] ?? null : null,
     rightGame: roundPair ? games[roundPair.rightGameId] ?? null : null
   };
-}
-
-/** Ties count as correct for either pick. */
-function isCorrectPick(leftGame: RunGame, rightGame: RunGame, gameId: string): boolean {
-  if (leftGame.snapshotScore === rightGame.snapshotScore) return true;
-  const correctId =
-    leftGame.snapshotScore > rightGame.snapshotScore ? leftGame.id : rightGame.id;
-  return gameId === correctId;
 }
 
 function readStoredHighScore(): number {

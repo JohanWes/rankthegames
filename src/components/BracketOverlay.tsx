@@ -1,21 +1,12 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import Image from "next/image";
+import { useEffect, useMemo, useRef } from "react";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 
-import { getBracketRoundPair } from "@/lib/bracket";
-import {
-  buildBracketTree,
-  CARD_WIDTH,
-  CARD_HEIGHT,
-  WORLD_WIDTH,
-  WORLD_HEIGHT,
-  STAGE_LABELS,
-  getCoverUrl,
-  type FlatNode
-} from "@/lib/bracket-layout";
-import { useBracketCamera } from "@/hooks/useBracketCamera";
+import { BracketRoundTabs } from "@/components/BracketRoundTabs";
+import { BracketTree } from "@/components/BracketTree";
+import { MAX_TOURNAMENT_ROUNDS } from "@/lib/bracket";
+import { buildBracketModel, type BracketMatch, type BracketModel } from "@/lib/bracket-model";
 import type { RunGame, RunPair, RunSelection } from "@/lib/types";
 
 type BracketOverlayProps = {
@@ -25,81 +16,47 @@ type BracketOverlayProps = {
   openingPairs: RunPair[];
   selections: RunSelection[];
   currentRound: number;
+  /** Show rating scores; only safe once the run is over. */
+  revealScores?: boolean;
 };
 
-function Miniature({ node, game }: { node: FlatNode; game: RunGame }) {
-  const coverUrl = getCoverUrl(game);
+function getSegmentClass(match: BracketMatch) {
+  if (match.status === "done") return match.isCorrect === false ? "bg-wrong" : "bg-correct";
+  if (match.status === "live") return "bg-accent shadow-[0_0_10px_rgba(245,158,11,0.6)]";
+  return "bg-white/10";
+}
 
+function ProgressStrip({ model }: { model: BracketModel }) {
   return (
-    <div
-      role="img"
-      aria-label={game.name}
-      className="absolute -translate-x-1/2 -translate-y-1/2 select-none"
-      style={{
-        left: node.x,
-        top: node.y,
-        width: CARD_WIDTH,
-        height: CARD_HEIGHT
-      }}
-    >
-      <motion.div
-        className={[
-          "relative h-full w-full overflow-hidden rounded-lg border bg-bg-elevated shadow-[0_20px_40px_rgba(0,0,0,0.4)]",
-          "transition-[border-color,filter,box-shadow] duration-200",
-          node.active
-            ? "border-accent shadow-[0_0_0_2px_rgba(245,158,11,0.18),0_0_32px_rgba(245,158,11,0.4)]"
-            : node.winner
-              ? "border-correct/80 shadow-[0_0_22px_rgba(34,197,94,0.22)]"
-              : "border-white/16",
-          node.eliminated ? "grayscale" : ""
-        ].join(" ")}
-        initial={{ opacity: 0, scale: 0.92 }}
-        animate={{ opacity: node.eliminated ? 0.4 : 1, scale: 1 }}
-        transition={{ type: "spring", stiffness: 320, damping: 28 }}
-      >
-        {coverUrl ? (
-          <Image
-            src={coverUrl}
-            alt=""
-            fill
-            draggable={false}
-            sizes="160px"
-            className="pointer-events-none object-cover"
-          />
-        ) : (
-          <div className="h-full w-full bg-gradient-to-br from-bg-elevated via-bg-base to-black" />
-        )}
-
-        {node.eliminated && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/48">
-            <span className="font-display text-5xl font-black leading-none text-wrong drop-shadow-[0_0_12px_rgba(239,68,68,0.78)]">
-              X
-            </span>
-          </div>
-        )}
-      </motion.div>
+    <div className="flex w-full items-center gap-1.5" aria-hidden="true">
+      {model.stages.map((stage) => (
+        <div key={stage.id} className="flex gap-[3px]" style={{ flexGrow: stage.matches.length }}>
+          {stage.matches.map((match) => (
+            <span
+              key={match.round}
+              className={`h-1.5 flex-1 rounded-full transition-colors ${getSegmentClass(match)}`}
+            />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
 
-function EmptySlot({ node }: { node: FlatNode }) {
-  return (
-    <div
-      className={[
-        "absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-lg border border-dashed border-white/12 bg-bg-elevated/24",
-        node.active ? "border-accent/45 bg-accent/8" : ""
-      ].join(" ")}
-      style={{
-        left: node.x,
-        top: node.y,
-        width: CARD_WIDTH,
-        height: CARD_HEIGHT
-      }}
-      aria-hidden="true"
-    >
-      <div className="h-2 w-2 rounded-full bg-white/18" />
-    </div>
-  );
+function getSubtitle(model: BracketModel, currentRound: number, games: Record<string, RunGame>) {
+  const lostMatch = Object.values(model.matches).find((match) => match.isCorrect === false);
+  if (lostMatch) {
+    const stage = model.stages.find((candidate) => candidate.matches.includes(lostMatch));
+    return `Out in round ${lostMatch.round} · ${stage?.title ?? ""}`;
+  }
+
+  if (model.championId) {
+    return `Bracket complete · ${games[model.championId]?.name ?? "Champion"} wins`;
+  }
+
+  const round = Math.min(Math.max(currentRound, 1), MAX_TOURNAMENT_ROUNDS);
+  const stage = model.stages.find((candidate) => candidate.id === model.currentStageId);
+  return `Round ${round} of ${MAX_TOURNAMENT_ROUNDS} · ${stage?.title ?? ""}`;
 }
 
 export function BracketOverlay({
@@ -108,219 +65,108 @@ export function BracketOverlay({
   games,
   openingPairs,
   selections,
-  currentRound
+  currentRound,
+  revealScores = false
 }: BracketOverlayProps) {
-  const { nodes, connectors, focusPoint } = useMemo(
-    () => buildBracketTree(openingPairs, selections, currentRound),
-    [openingPairs, selections, currentRound]
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  const model = useMemo(
+    () => buildBracketModel(openingPairs, selections, currentRound, games),
+    [openingPairs, selections, currentRound, games]
   );
 
-  const {
-    viewportRef,
-    camera,
-    isDragging,
-    isAnimated,
-    handlers,
-    fitWholeBracket,
-    resetToInitialView,
-    zoomIn,
-    zoomOut
-  } = useBracketCamera({ active: open, focusPoint });
+  const isRunOver =
+    model.championId !== null ||
+    Object.values(model.matches).some((match) => match.isCorrect === false);
 
-  const currentPair = getBracketRoundPair(currentRound, openingPairs, selections);
-
-  // Pan/zoom only changes the world transform; keep the ~300 world elements
-  // out of those re-renders.
-  const world = useMemo(
-    () => (
-      <>
-        {/* World background */}
-        <div className="absolute inset-0 rounded-[28px] border border-white/8 bg-bg-base/36 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03),0_40px_120px_rgba(0,0,0,0.28)]" />
-
-        {/* Stage labels */}
-        {STAGE_LABELS.map(({ label, x }) => (
-          <div
-            key={`${label}-${x}`}
-            className="absolute top-7 -translate-x-1/2 font-display text-[18px] font-semibold uppercase tracking-[0.22em] text-text-muted"
-            style={{ left: x }}
-          >
-            {label}
-          </div>
-        ))}
-
-        {/* Connector lines */}
-        <svg
-          viewBox={`0 0 ${WORLD_WIDTH} ${WORLD_HEIGHT}`}
-          className="absolute inset-0 h-full w-full"
-          aria-hidden="true"
-        >
-          <defs>
-            <linearGradient id="bracket-line" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0%" stopColor="rgba(240,246,252,0.32)" />
-              <stop offset="50%" stopColor="rgba(245,158,11,0.55)" />
-              <stop offset="100%" stopColor="rgba(240,246,252,0.32)" />
-            </linearGradient>
-          </defs>
-          {connectors.map((line, index) => (
-            <g key={`${line.x1}-${line.y1}-${index}`}>
-              <line
-                x1={line.x1}
-                y1={line.y1}
-                x2={line.x2}
-                y2={line.y2}
-                stroke="rgba(0,0,0,0.42)"
-                strokeWidth="9"
-                strokeLinecap="round"
-              />
-              <line
-                x1={line.x1}
-                y1={line.y1}
-                x2={line.x2}
-                y2={line.y2}
-                stroke="url(#bracket-line)"
-                strokeWidth="3.5"
-                strokeLinecap="round"
-              />
-            </g>
-          ))}
-        </svg>
-
-        {/* Game nodes */}
-        {nodes.map((node) => {
-          const game = node.gameId ? (games[node.gameId] ?? null) : null;
-          return game ? (
-            <Miniature key={node.key} node={node} game={game} />
-          ) : (
-            <EmptySlot key={node.key} node={node} />
-          );
-        })}
-      </>
-    ),
-    [nodes, connectors, games]
-  );
-
-  // Escape key to close
+  // Escape closes; focus moves into the dialog and returns to the opener afterwards.
   useEffect(() => {
     if (!open) return;
 
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
+      if (event.key === "Escape") onClose();
     }
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
+    };
   }, [onClose, open]);
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Tournament bracket"
-          className="fixed inset-0 z-50 overflow-hidden bg-[#050912]"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          {/* Header toolbar */}
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-3 md:p-5">
-            <div className="pointer-events-auto rounded-lg border border-white/10 bg-bg-base/78 px-3 py-2 shadow-2xl backdrop-blur-xl md:px-4">
-              <p className="font-display text-2xl font-semibold leading-none text-text-primary md:text-3xl">
-                Bracket
-              </p>
-              <p className="mt-0.5 text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
-                Round {Math.min(currentRound, 15)} / 15
-              </p>
-            </div>
-
-            <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-white/10 bg-bg-base/78 p-1.5 shadow-2xl backdrop-blur-xl">
-              <button
-                type="button"
-                onClick={zoomOut}
-                aria-label="Zoom out"
-                className="flex h-10 w-10 items-center justify-center rounded-md border border-white/10 text-2xl leading-none text-text-secondary transition-colors hover:border-accent/60 hover:text-accent"
-              >
-                -
-              </button>
-              <div className="hidden min-w-14 text-center font-display text-xl font-semibold text-text-primary sm:block">
-                {Math.round(camera.zoom * 100)}%
-              </div>
-              <button
-                type="button"
-                onClick={zoomIn}
-                aria-label="Zoom in"
-                className="flex h-10 w-10 items-center justify-center rounded-md border border-white/10 text-2xl leading-none text-text-secondary transition-colors hover:border-accent/60 hover:text-accent"
-              >
-                +
-              </button>
-              <button
-                type="button"
-                onClick={fitWholeBracket}
-                className="hidden h-10 rounded-md border border-white/10 px-3 font-display text-lg font-semibold uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-accent/60 hover:text-accent sm:block"
-              >
-                Fit
-              </button>
-              <button
-                type="button"
-                onClick={resetToInitialView}
-                className="hidden h-10 rounded-md border border-white/10 px-3 font-display text-lg font-semibold uppercase tracking-[0.08em] text-text-secondary transition-colors hover:border-accent/60 hover:text-accent md:block"
-              >
-                Focus
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close bracket"
-                className="flex h-10 w-10 items-center justify-center rounded-md border border-white/10 text-2xl leading-none text-text-secondary transition-colors hover:border-wrong/70 hover:text-wrong"
-              >
-                X
-              </button>
-            </div>
-          </div>
-
-          {/* Infinite canvas viewport */}
+    <MotionConfig reducedMotion="user">
+      <AnimatePresence>
+        {open && (
           <motion.div
-            ref={viewportRef}
-            className={[
-              "absolute inset-0 touch-none overflow-hidden select-none",
-              isDragging ? "cursor-grabbing" : "cursor-grab"
-            ].join(" ")}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bracket-title"
+            className="fixed inset-0 z-50 flex flex-col bg-bg-deep/95 backdrop-blur-md"
             style={{
               backgroundImage:
-                "radial-gradient(circle at 50% 50%, rgba(245,158,11,0.10), transparent 28rem), linear-gradient(rgba(240,246,252,0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(240,246,252,0.055) 1px, transparent 1px)",
-              backgroundPosition: "center, center, center",
-              backgroundSize: "100% 100%, 48px 48px, 48px 48px"
+                "radial-gradient(ellipse 60% 50% at 50% 45%, rgba(245,158,11,0.07), transparent 70%)"
             }}
-            {...handlers}
-            initial={{ scale: 0.99 }}
-            animate={{ scale: 1 }}
-            exit={{ scale: 0.99 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
           >
-            <div
-              className="absolute top-0 left-0"
-              style={{
-                width: WORLD_WIDTH,
-                height: WORLD_HEIGHT,
-                transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.zoom})`,
-                transformOrigin: "0 0",
-                transition: isAnimated ? "transform 110ms ease-out" : "none",
-                willChange: "transform"
-              }}
-              aria-label={
-                currentPair
-                  ? `Tournament bracket current round ${currentRound}`
-                  : "Tournament bracket"
-              }
-            >
-              {world}
+            <header className="shrink-0 border-b border-white/[0.06] px-4 pt-3 pb-3 md:px-8 md:pt-5">
+              <div className="mx-auto flex max-w-6xl items-center gap-4">
+                <div className="min-w-0 flex-1">
+                  <h2
+                    id="bracket-title"
+                    className="font-display text-3xl leading-none text-text-primary md:text-4xl"
+                  >
+                    Bracket
+                  </h2>
+                  <p className="mt-1 truncate text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary">
+                    {getSubtitle(model, currentRound, games)}
+                  </p>
+                </div>
+
+                <button
+                  ref={closeButtonRef}
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close bracket"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-bg-elevated/80 text-text-secondary transition-colors hover:border-white/25 hover:text-text-primary focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="mx-auto mt-3 max-w-6xl">
+                <ProgressStrip model={model} />
+              </div>
+            </header>
+
+            <div className="hidden min-h-0 flex-1 lg:block">
+              <BracketTree
+                model={model}
+                games={games}
+                revealScores={revealScores}
+                isRunOver={isRunOver}
+              />
+            </div>
+
+            <div className="min-h-0 flex-1 lg:hidden">
+              <BracketRoundTabs
+                model={model}
+                games={games}
+                revealScores={revealScores}
+                isRunOver={isRunOver}
+              />
             </div>
           </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+    </MotionConfig>
   );
 }

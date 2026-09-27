@@ -150,6 +150,7 @@ export default function GamePage() {
         openingPairs={game.roundPairs}
         selections={game.selections}
         currentRound={game.currentRound}
+        revealScores={isRunOver}
       />
 
       {/* Game area */}

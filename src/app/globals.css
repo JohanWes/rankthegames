@@ -175,6 +175,71 @@ button {
 .animate-slide-up-3 { animation-delay: 240ms; }
 .animate-slide-up-4 { animation-delay: 360ms; }
 
+/* Tournament bracket connectors. Each feeder cell draws its own half of the
+   elbow into the column gap; the receiving cell draws the stub into its card.
+   Logical properties let the right half mirror itself via dir="rtl". */
+.bracket-cell {
+  --bracket-line: rgba(240, 246, 252, 0.14);
+  --bracket-line-lit: rgba(245, 158, 11, 0.75);
+  --feed-color: var(--bracket-line);
+  --receive-color: var(--bracket-line);
+  --receive-end-color: var(--bracket-line);
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.bracket-cell.feed-lit { --feed-color: var(--bracket-line-lit); }
+.bracket-cell.receive-lit { --receive-color: var(--bracket-line-lit); }
+.bracket-cell.receive-end-lit { --receive-end-color: var(--bracket-line-lit); }
+
+.bracket-feed-top::after,
+.bracket-feed-bottom::after,
+.bracket-feed-straight::after,
+.bracket-receive-end::after,
+.bracket-receive::before {
+  content: "";
+  position: absolute;
+  width: calc(var(--bracket-gap) / 2);
+  pointer-events: none;
+}
+
+.bracket-feed-top::after {
+  inset-inline-start: 100%;
+  top: calc(50% - 1px);
+  height: calc(50% + 1px);
+  border-top: 2px solid var(--feed-color);
+  border-inline-end: 2px solid var(--feed-color);
+  border-start-end-radius: 10px;
+}
+
+.bracket-feed-bottom::after {
+  inset-inline-start: 100%;
+  top: 0;
+  height: calc(50% + 1px);
+  border-bottom: 2px solid var(--feed-color);
+  border-inline-end: 2px solid var(--feed-color);
+  border-end-end-radius: 10px;
+}
+
+.bracket-feed-straight::after {
+  inset-inline-start: 100%;
+  top: calc(50% - 1px);
+  border-top: 2px solid var(--feed-color);
+}
+
+.bracket-receive::before {
+  inset-inline-end: 100%;
+  top: calc(50% - 1px);
+  border-top: 2px solid var(--receive-color);
+}
+
+.bracket-receive-end::after {
+  inset-inline-start: 100%;
+  top: calc(50% - 1px);
+  border-top: 2px solid var(--receive-end-color);
+}
+
 /* Accessibility: respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

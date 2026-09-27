@@ -1,4 +1,4 @@
-import type { RunPair, RunSelection } from "@/lib/types";
+import type { RunGame, RunPair, RunSelection } from "@/lib/types";
 
 export const OPENING_BRACKET_ROUNDS = 8;
 export const MAX_TOURNAMENT_ROUNDS = 15;
@@ -87,4 +87,12 @@ export function getBracketRoundPair(
     rightGameId: rightWinner.pickedGameId,
     bucket: getTournamentBucket(round)
   };
+}
+
+/** Whether picking `gameId` beats the other game. Ties count as correct for either pick. */
+export function isCorrectPick(leftGame: RunGame, rightGame: RunGame, gameId: string): boolean {
+  if (leftGame.snapshotScore === rightGame.snapshotScore) return true;
+  const correctId =
+    leftGame.snapshotScore > rightGame.snapshotScore ? leftGame.id : rightGame.id;
+  return gameId === correctId;
 }
