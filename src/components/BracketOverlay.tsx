@@ -9,6 +9,13 @@ import { MAX_TOURNAMENT_ROUNDS } from "@/lib/bracket";
 import { buildBracketModel, type BracketMatch, type BracketModel } from "@/lib/bracket-model";
 import type { RunGame, RunPair, RunSelection } from "@/lib/types";
 
+/**
+ * Any onUpdate handler keeps framer-motion off the native WAAPI path. There, the
+ * exit fade cancels its browser animation a frame before the final opacity is
+ * written, flashing the closed dialog back at full opacity.
+ */
+const forceFrameloopAnimation = () => {};
+
 type BracketOverlayProps = {
   open: boolean;
   onClose: () => void;
@@ -114,6 +121,7 @@ export function BracketOverlay({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
+            onUpdate={forceFrameloopAnimation}
           >
             <header className="shrink-0 border-b border-white/[0.06] px-4 pt-3 pb-3 md:px-8 md:pt-5">
               <div className="mx-auto flex max-w-6xl items-center gap-4">
