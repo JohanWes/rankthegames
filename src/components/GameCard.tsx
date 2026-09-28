@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Image from "next/image";
 import { motion, useSpring, useTransform } from "framer-motion";
+import { CoverPlaceholder } from "@/components/CoverPlaceholder";
 import { CARD_IMAGE_SIZES } from "@/lib/run-prefetch";
 import type { RunGame } from "@/lib/types";
 
@@ -24,19 +25,19 @@ type GameCardProps = {
 };
 
 const borderColors: Record<GameCardState, string> = {
-  idle: "border-white/10",
+  idle: "border-line",
   selected: "border-accent",
   correct: "border-correct",
   incorrect: "border-wrong",
-  "opponent-correct": "border-white/10",
-  "opponent-incorrect": "border-white/10",
+  "opponent-correct": "border-line",
+  "opponent-incorrect": "border-line",
 };
 
 const glowStyles: Record<GameCardState, string> = {
   idle: "",
-  selected: "glow-accent-box",
-  correct: "neon-glow-green",
-  incorrect: "neon-glow-red",
+  selected: "result-glow-selected",
+  correct: "result-glow-correct",
+  incorrect: "result-glow-incorrect",
   "opponent-correct": "",
   "opponent-incorrect": "",
 };
@@ -51,13 +52,12 @@ function ScoreDisplay({ score }: { score: number }) {
   }, [score, springValue]);
 
   return (
-    <motion.span className="font-display text-4xl font-bold text-accent md:text-5xl">
+    <motion.span className="tabular block font-display text-5xl leading-none font-semibold text-text-primary md:text-6xl">
       {display}
     </motion.span>
   );
 }
 
-// Result icon — checkmark or X
 function ResultIcon({ isCorrect }: { isCorrect: boolean }) {
   return (
     <motion.div
@@ -89,31 +89,6 @@ function ResultIcon({ isCorrect }: { isCorrect: boolean }) {
         </svg>
       )}
     </motion.div>
-  );
-}
-
-// Gamepad SVG for missing cover fallback
-function GamepadIcon() {
-  return (
-    <svg
-      width="64"
-      height="64"
-      viewBox="0 0 64 64"
-      fill="none"
-      className="opacity-30"
-    >
-      <path
-        d="M20 18H44C50.627 18 56 23.373 56 30V34C56 40.627 50.627 46 44 46H20C13.373 46 8 40.627 8 34V30C8 23.373 13.373 18 20 18Z"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <circle cx="22" cy="32" r="3" fill="currentColor" />
-      <circle cx="42" cy="28" r="2.5" fill="currentColor" />
-      <circle cx="46" cy="32" r="2.5" fill="currentColor" />
-      <circle cx="42" cy="36" r="2.5" fill="currentColor" />
-      <circle cx="38" cy="32" r="2.5" fill="currentColor" />
-      <rect x="28" y="30" width="8" height="4" rx="2" fill="currentColor" />
-    </svg>
   );
 }
 
@@ -153,8 +128,8 @@ export function GameCard({
         whileTap={canClick ? { scale: 0.96 } : undefined}
         transition={{ type: "spring", stiffness: 300, damping: 22 }}
         className={`
-          relative w-full overflow-hidden rounded-2xl border-2
-          aspect-[3/4]
+          relative w-full overflow-hidden rounded-xl border-2
+          aspect-[3/4] focus-visible:outline-offset-4
           ${borderColors[state]}
           ${glowStyles[state]}
           ${canClick ? "cursor-pointer" : "cursor-default"}
@@ -172,58 +147,43 @@ export function GameCard({
             priority
           />
         ) : (
-          /* Gradient fallback with gamepad icon */
-          <div
-            className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,240,255,0.1) 100%), #161B22",
-            }}
-          >
-            <GamepadIcon />
-            <span className="text-center font-display text-2xl font-semibold text-text-secondary">
-              {game.name}
-            </span>
-          </div>
+          <CoverPlaceholder name={game.name} iconSize={64} />
         )}
 
-        {/* Result icon (checkmark / X) */}
         {showResult && <ResultIcon isCorrect={state === "correct"} />}
 
-        {/* Bottom gradient scrim — desktop only */}
-        <div className="hidden md:block absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-16">
-          <h3 className="font-display text-2xl leading-tight font-semibold text-text-primary drop-shadow-lg">
-            {game.name}
-          </h3>
-          {game.year != null && (
-            <p className="mt-0.5 text-sm text-text-secondary">{game.year}</p>
+        {/* Title sits on the cover at md+ (below the card on mobile); the rating joins it on reveal */}
+        <div
+          className={[
+            "absolute inset-x-0 bottom-0 items-end justify-between gap-4 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-5 pt-20 pb-4 text-left",
+            showScore ? "flex" : "hidden md:flex"
+          ].join(" ")}
+        >
+          <div className="hidden min-w-0 md:block">
+            <h3 className="font-display text-3xl leading-[0.95] font-medium text-text-primary text-balance">
+              {game.name}
+            </h3>
+            {game.year != null && (
+              <p className="mt-1 text-sm font-medium text-white/60">{game.year}</p>
+            )}
+          </div>
+
+          {showScore && (
+            <motion.div
+              initial={{ y: 12, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 200, damping: 20, delay: 0.1 }}
+              className="ml-auto shrink-0 text-right"
+            >
+              <p className="text-xs font-medium text-white/60">Rating</p>
+              <ScoreDisplay score={game.snapshotScore} />
+            </motion.div>
           )}
         </div>
-
-        {/* Score overlay — bottom-anchored glassmorphism panel */}
-        {showScore && (
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 200, damping: 20, delay: 0.1 }}
-            className="absolute inset-x-0 bottom-0 z-10 p-4"
-          >
-            <div
-              className="glass rounded-xl px-4 py-3 text-center"
-              style={{ background: "rgba(7, 11, 20, 0.75)" }}
-            >
-              <ScoreDisplay score={game.snapshotScore} />
-              <p className="mt-0.5 text-[10px] uppercase tracking-[0.2em] text-text-secondary">
-                Live Score
-              </p>
-            </div>
-          </motion.div>
-        )}
       </motion.button>
 
-      {/* Title below card — mobile only */}
-      <div className="mt-2 px-1 md:hidden">
-        <h3 className="line-clamp-2 min-h-[2.5em] font-display text-xl leading-tight font-semibold text-text-primary">
+      <div className="mt-2 min-h-[4.25rem] px-1 md:hidden">
+        <h3 className="line-clamp-2 font-display text-2xl leading-none font-medium text-text-primary">
           {game.name}
         </h3>
         {game.year != null && (

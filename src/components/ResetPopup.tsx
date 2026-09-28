@@ -1,83 +1,65 @@
 "use client";
 
 import { useEffect } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
+
+import { getCoverUrl } from "@/components/BracketMatchCard";
+import type { RunGame } from "@/lib/types";
 
 const RESET_DISPLAY_MS = 1000;
 
 type ResetPopupProps = {
   visible: boolean;
   streak: number;
-  championName: string;
+  champion: RunGame | null;
   onComplete: () => void;
 };
 
-export function ResetPopup({ visible, streak, championName, onComplete }: ResetPopupProps) {
+export function ResetPopup({ visible, streak, champion, onComplete }: ResetPopupProps) {
   useEffect(() => {
     if (!visible) return;
     const timer = setTimeout(onComplete, RESET_DISPLAY_MS);
     return () => clearTimeout(timer);
   }, [visible, onComplete]);
 
+  const coverUrl = getCoverUrl(champion);
+
   return (
     <AnimatePresence>
       {visible && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center"
+          role="status"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.3 }}
         >
-          {/* Glow backdrop */}
           <motion.div
-            className="absolute inset-0"
-            style={{
-              background:
-                "radial-gradient(ellipse at center, rgba(245, 158, 11, 0.12), transparent 70%)",
-            }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4 }}
-            aria-hidden="true"
-          />
-
-          {/* Content */}
-          <motion.div
-            className="relative flex flex-col items-center"
-            initial={{ scale: 0.5, opacity: 0 }}
+            className="flex flex-col items-center px-6 text-center"
+            initial={{ scale: 0.85, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 1.2, opacity: 0 }}
-            transition={{
-              type: "spring",
-              stiffness: 300,
-              damping: 20,
-            }}
+            exit={{ scale: 1.06, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 22 }}
           >
-            <h2
-              className="font-display text-8xl font-bold tracking-wider text-accent glow-accent-text sm:text-9xl"
-            >
-              CHAMPION!
+            {coverUrl && (
+              <div className="relative mb-5 h-44 w-33 overflow-hidden rounded-lg border-2 border-gold shadow-[0_16px_48px_-12px_rgba(251,191,36,0.45)]">
+                <Image src={coverUrl} alt="" fill sizes="132px" className="object-cover" />
+              </div>
+            )}
+
+            <h2 className="font-display text-8xl font-semibold uppercase leading-[0.8] text-gold sm:text-9xl">
+              Champion
             </h2>
 
-            <motion.p
-              className="mt-2 max-w-[80vw] text-center font-display text-3xl font-bold text-text-primary"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15, duration: 0.3 }}
-            >
-              {championName}
-            </motion.p>
+            <p className="mt-3 max-w-[80vw] font-display text-3xl leading-none text-text-primary">
+              {champion?.name ?? "Bracket complete"}
+            </p>
 
-            <motion.p
-              className="mt-1 font-display text-2xl font-bold text-accent"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25, duration: 0.3 }}
-            >
-              {streak} streak
-            </motion.p>
+            <p className="mt-2 text-sm font-medium text-text-secondary">
+              <span className="tabular font-semibold text-text-primary">{streak}</span> correct picks
+            </p>
           </motion.div>
         </motion.div>
       )}

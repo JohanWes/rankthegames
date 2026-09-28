@@ -2,6 +2,8 @@
 
 import { useRef, useState, useEffect, useCallback, type ReactNode } from "react";
 
+import { VsMark } from "@/components/VsMark";
+
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
@@ -17,8 +19,8 @@ type MobileCarouselProps = {
 function DotIndicator({ active }: { active: boolean }) {
   return (
     <div
-      className={`h-2 w-2 rounded-full transition-all duration-300 ${
-        active ? "bg-accent scale-125" : "bg-text-muted"
+      className={`h-1.5 rounded-full transition-all duration-300 ${
+        active ? "w-5 bg-accent" : "w-1.5 bg-text-muted"
       }`}
     />
   );
@@ -80,11 +82,7 @@ export function MobileCarousel({
       {/* VS badge + dot indicators - above cards, mobile only */}
       <div className="mb-3 flex items-center justify-center gap-3 md:hidden">
         <DotIndicator active={activeIndex === 0} />
-        <div className="flex h-8 w-8 items-center justify-center rounded-full glass">
-          <span className="font-display text-sm font-bold text-accent glow-accent-text">
-            VS
-          </span>
-        </div>
+        <VsMark size="sm" />
         <DotIndicator active={activeIndex === 1} />
       </div>
 

@@ -99,23 +99,26 @@ export default function GamePage() {
     game.continueAfterReset();
   };
 
-  // Loading state
   if (game.phase === "LOADING") {
     return (
-      <div className="flex min-h-svh items-center justify-center">
+      <div className="flex min-h-svh items-center justify-center px-4">
         {game.error ? (
-          <div className="text-center">
-            <p className="text-wrong">{game.error}</p>
-            <button
-              type="button"
-              onClick={handlePlayAgain}
-              className="mt-4 rounded-full bg-accent/20 px-6 py-2 text-accent"
-            >
-              Retry
+          <div role="alert" className="max-w-sm text-center">
+            <p className="font-display text-3xl leading-none text-text-primary">Couldn&apos;t load the next run</p>
+            <p className="mt-2 text-text-secondary">{game.error}</p>
+            <button type="button" onClick={handlePlayAgain} className="btn-primary mt-6 px-8 pt-3 pb-2.5 text-2xl">
+              Try again
             </button>
           </div>
         ) : (
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-accent/30 border-t-accent" />
+          <div
+            role="status"
+            aria-label="Loading games"
+            className="flex w-full items-center justify-center gap-6 px-3 pt-14 md:px-4 md:pt-16"
+          >
+            <div className="aspect-[3/4] w-full max-w-xs animate-pulse rounded-xl border-2 border-line bg-bg-elevated md:max-w-[440px] lg:max-w-[520px]" />
+            <div className="hidden aspect-[3/4] w-full max-w-[440px] animate-pulse rounded-xl border-2 border-line bg-bg-elevated md:block lg:max-w-[520px]" />
+          </div>
         )}
       </div>
     );
@@ -153,7 +156,6 @@ export default function GamePage() {
         revealScores={isRunOver}
       />
 
-      {/* Game area */}
       <div className="relative flex min-h-svh flex-col items-center justify-center px-0 pt-14 pb-8 md:flex-row md:gap-6 md:px-4 md:pt-16">
         {game.leftGame && game.rightGame && (
           <MobileCarousel
@@ -225,12 +227,10 @@ export default function GamePage() {
               exit={{ scale: 1.04, opacity: 0 }}
               transition={{ type: "spring", stiffness: 260, damping: 22 }}
             >
-              <p className="text-sm font-semibold uppercase tracking-[0.35em] text-accent">
-                Tournament
-              </p>
-              <h2 className="mt-2 font-display text-6xl font-bold text-text-primary glow-accent-text sm:text-8xl">
+              <h2 className="font-display text-7xl font-semibold uppercase leading-none text-text-primary sm:text-9xl">
                 {getTournamentStageTitle(game.currentRound)}
               </h2>
+              <div className="mx-auto mt-3 h-1 w-16 rounded-full bg-accent" aria-hidden="true" />
             </motion.div>
           </motion.div>
         )}
@@ -239,7 +239,7 @@ export default function GamePage() {
       <ResetPopup
         visible={game.phase === "TOURNAMENT_COMPLETE"}
         streak={game.streak}
-        championName={champion?.name ?? "Champion"}
+        champion={champion}
         onComplete={handleResetContinue}
       />
 

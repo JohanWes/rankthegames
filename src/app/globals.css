@@ -4,15 +4,15 @@
   --color-bg-deep: #070B14;
   --color-bg-base: #0D1117;
   --color-bg-elevated: #161B22;
-  --color-bg-overlay: rgba(7, 11, 20, 0.85);
-  --color-surface-glass: rgba(22, 27, 34, 0.6);
+  --color-bg-raised: #1C232C;
+  --color-bg-overlay: rgba(7, 11, 20, 0.88);
 
-  --color-neon-cyan: #00F0FF;
-  --color-neon-purple: #A855F7;
-  --color-neon-pink: #EC4899;
+  --color-line: rgba(240, 246, 252, 0.08);
+  --color-line-strong: rgba(240, 246, 252, 0.16);
 
   --color-accent: #F59E0B;
-  --color-accent-glow: rgba(245, 158, 11, 0.4);
+  --color-accent-hover: #FBB024;
+  --color-accent-glow: rgba(245, 158, 11, 0.35);
 
   --color-correct: #22C55E;
   --color-correct-glow: rgba(34, 197, 94, 0.3);
@@ -20,13 +20,15 @@
   --color-wrong-glow: rgba(239, 68, 68, 0.3);
 
   --color-gold: #FBBF24;
+  --color-silver: #C9D1D9;
+  --color-bronze: #D08B4F;
 
   --color-text-primary: #F0F6FC;
   --color-text-secondary: #8B949E;
-  --color-text-muted: #484F58;
+  --color-text-muted: #6E7681;
 
   --font-display: var(--font-teko);
-  --font-body: var(--font-inter);
+  --font-body: var(--font-barlow);
 }
 
 * {
@@ -36,88 +38,92 @@
 html {
   color-scheme: dark;
   background: var(--color-bg-deep);
+  scrollbar-color: var(--color-line-strong) transparent;
 }
 
 body {
   margin: 0;
-}
-
-/* Ambient background with grid and floating shapes */
-html::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: 
-    /* Subtle grid pattern */
-    linear-gradient(rgba(240, 246, 252, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(240, 246, 252, 0.03) 1px, transparent 1px),
-    /* Base */
+  /* One faint wash of light from above; the cover art supplies the colour. */
+  background:
+    radial-gradient(120% 60% at 50% -10%, rgba(240, 246, 252, 0.045), transparent 70%),
     var(--color-bg-deep);
-  background-size: 60px 60px, 60px 60px, 100% 100%;
-  pointer-events: none;
+  background-attachment: fixed;
 }
 
-/* Static ambient shapes (not animated: they sit under backdrop-blur elements) */
-html::after {
-  content: "";
-  position: fixed;
-  inset: -20%;
-  z-index: -1;
-  background: 
-    /* Accent ring 1 - top right */
-    radial-gradient(ellipse 180px 180px at 85% 15%, transparent 50%, var(--color-accent-glow) 70%, transparent 100%),
-    /* Accent ring 2 - bottom left */
-    radial-gradient(ellipse 120px 120px at 10% 85%, transparent 40%, var(--color-accent-glow) 60%, transparent 100%),
-    /* Subtle cyan accent - bottom right */
-    radial-gradient(ellipse 100px 100px at 90% 80%, rgba(0, 240, 255, 0.03) 50%, transparent 70%),
-    /* Top-left glow */
-    radial-gradient(ellipse 80px 80px at 5% 10%, rgba(168, 85, 247, 0.04) 50%, transparent 70%);
-  pointer-events: none;
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg-deep);
 }
 
-/* Glassmorphism utility */
-.glass {
-  background: var(--color-surface-glass);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
-  border: 1px solid rgba(240, 246, 252, 0.08);
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
 }
 
-/* Neon glow utilities — box-shadow variants */
-.neon-glow-green {
+/* Buttons: one primary (solid amber) and one quiet (hairline) style. */
+.btn-primary,
+.btn-quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  transition:
+    background-color 150ms ease-out,
+    border-color 150ms ease-out,
+    color 150ms ease-out,
+    transform 150ms ease-out;
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-bg-deep);
+  box-shadow: 0 6px 20px -8px var(--color-accent-glow);
+}
+
+.btn-primary:hover {
+  background: var(--color-accent-hover);
+}
+
+.btn-quiet {
+  border: 1px solid var(--color-line-strong);
+  color: var(--color-text-secondary);
+}
+
+.btn-quiet:hover {
+  border-color: rgba(240, 246, 252, 0.3);
+  color: var(--color-text-primary);
+}
+
+.btn-primary:active,
+.btn-quiet:active {
+  transform: translateY(1px);
+}
+
+/* Result glow: the one place colour bleeds past a border. */
+.result-glow-correct {
   box-shadow:
-    0 0 8px var(--color-correct-glow),
-    inset 0 0 8px var(--color-correct-glow);
+    0 0 0 1px var(--color-correct),
+    0 12px 40px -8px var(--color-correct-glow);
 }
 
-.neon-glow-red {
+.result-glow-incorrect {
   box-shadow:
-    0 0 8px var(--color-wrong-glow),
-    inset 0 0 8px var(--color-wrong-glow);
+    0 0 0 1px var(--color-wrong),
+    0 12px 40px -8px var(--color-wrong-glow);
 }
 
-/* Accent glow utilities */
-.glow-accent-text {
-  text-shadow:
-    0 0 10px var(--color-accent-glow),
-    0 0 30px var(--color-accent-glow);
+.result-glow-selected {
+  box-shadow: 0 12px 40px -10px var(--color-accent-glow);
 }
 
-.glow-accent-box {
-  box-shadow:
-    0 0 12px var(--color-accent-glow),
-    0 0 30px rgba(245, 158, 11, 0.2);
-}
-
-/* Button pulse animation */
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 12px var(--color-accent-glow), 0 0 30px rgba(245, 158, 11, 0.2); }
-  50% { box-shadow: 0 0 20px var(--color-accent-glow), 0 0 50px rgba(245, 158, 11, 0.35); }
-}
-
-.animate-pulse-glow {
-  animation: pulse-glow 2.5s ease-in-out infinite;
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Hide scrollbar for carousel */
@@ -173,14 +179,13 @@ button {
 .animate-slide-up-1 { animation-delay: 0ms; }
 .animate-slide-up-2 { animation-delay: 120ms; }
 .animate-slide-up-3 { animation-delay: 240ms; }
-.animate-slide-up-4 { animation-delay: 360ms; }
 
 /* Tournament bracket connectors. Each feeder cell draws its own half of the
    elbow into the column gap; the receiving cell draws the stub into its card.
    Logical properties let the right half mirror itself via dir="rtl". */
 .bracket-cell {
   --bracket-line: rgba(240, 246, 252, 0.14);
-  --bracket-line-lit: rgba(245, 158, 11, 0.75);
+  --bracket-line-lit: var(--color-accent);
   --feed-color: var(--bracket-line);
   --receive-color: var(--bracket-line);
   --receive-end-color: var(--bracket-line);

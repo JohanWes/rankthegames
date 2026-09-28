@@ -27,14 +27,14 @@ describe("GameCard", () => {
     render(
       <GameCard game={baseGame} state="correct" showScore position="left" />
     );
-    expect(screen.getByText("Live Score")).toBeInTheDocument();
+    expect(screen.getByText("Rating")).toBeInTheDocument();
   });
 
   it("hides score when showScore is false", () => {
     render(
       <GameCard game={baseGame} state="idle" position="left" />
     );
-    expect(screen.queryByText("Live Score")).not.toBeInTheDocument();
+    expect(screen.queryByText("Rating")).not.toBeInTheDocument();
   });
 
   it("calls onSelect when clicked in idle state", async () => {

@@ -34,7 +34,7 @@ export function BracketChampionCard({ champion }: BracketChampionCardProps) {
     >
       <div
         className={[
-          "mb-2 flex items-center gap-1.5 font-display text-base uppercase leading-none tracking-[0.2em]",
+          "mb-2 flex items-center gap-1.5 font-display text-base uppercase leading-none tracking-[0.06em]",
           champion ? "text-gold" : "text-text-muted"
         ].join(" ")}
       >
@@ -46,15 +46,15 @@ export function BracketChampionCard({ champion }: BracketChampionCardProps) {
         className={[
           "relative h-[124px] w-[93px] overflow-hidden rounded-lg border-2",
           champion
-            ? "border-gold shadow-[0_0_0_4px_rgba(251,191,36,0.12),0_0_36px_rgba(251,191,36,0.35)]"
-            : "border-dashed border-white/15 bg-bg-elevated/40"
+            ? "border-gold shadow-[0_16px_40px_-12px_rgba(251,191,36,0.45)]"
+            : "border-dashed border-line-strong bg-bg-elevated/40"
         ].join(" ")}
       >
         {champion && coverUrl ? (
           <Image src={coverUrl} alt="" fill sizes="220px" draggable={false} className="object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center">
-            <TrophyIcon className="h-9 w-9 text-white/12" />
+            <TrophyIcon className="h-9 w-9 text-line-strong" />
           </div>
         )}
       </div>

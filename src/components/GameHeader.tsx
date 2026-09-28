@@ -19,35 +19,29 @@ export function GameHeader({
   onOpenBracket
 }: GameHeaderProps) {
   return (
-    <header className="fixed inset-x-0 top-0 z-30 glass h-14 md:h-16">
-      <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4">
-        {/* Wordmark */}
+    <header className="fixed inset-x-0 top-0 z-30 h-14 border-b border-line bg-bg-deep/80 backdrop-blur-md md:h-16">
+      <div className="mx-auto grid h-full max-w-6xl grid-cols-[1fr_auto_1fr] items-center gap-3 px-4">
         <Link
           href="/"
-          className="font-display text-xl font-bold text-accent glow-accent-text md:text-2xl"
+          className="justify-self-start font-display text-xl font-semibold uppercase leading-none text-text-primary sm:text-2xl md:text-3xl"
         >
-          RankTheGames
+          Rank the <span className="text-accent">games</span>
         </Link>
 
-        {/* Streak */}
         <StreakCounter
           streak={streak}
           previousStreak={previousStreak}
           isNewHighScore={isNewHighScore}
         />
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onOpenBracket}
-            className="rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-sm font-semibold text-accent transition-colors hover:border-accent hover:bg-accent/20"
-          >
+        <div className="flex items-center gap-2 justify-self-end">
+          <button type="button" onClick={onOpenBracket} className="btn-quiet h-8 px-3 pt-0.5 text-lg">
             Bracket
           </button>
 
-          {/* High score badge */}
-          <div className="rounded-full border border-white/10 px-3 py-1 text-sm font-semibold text-text-secondary">
-            HI: {highScore}
+          <div className="hidden h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-sm sm:flex">
+            <span className="text-text-secondary">Best</span>
+            <span className="tabular font-semibold text-text-primary">{highScore}</span>
           </div>
         </div>
       </div>

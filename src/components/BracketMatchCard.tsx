@@ -68,30 +68,18 @@ function MatchSlot({
   if (!game) {
     return (
       <div className="flex h-12 items-center gap-2.5 px-2">
-        <div className="h-10 w-[30px] shrink-0 rounded-[4px] border border-dashed border-white/15" />
-        <span className="font-display text-base uppercase tracking-[0.12em] text-text-muted">TBD</span>
+        <div className="h-10 w-[30px] shrink-0 rounded-[4px] border border-dashed border-line-strong" />
+        <span className="font-display text-base uppercase tracking-[0.06em] text-text-muted">TBD</span>
       </div>
     );
   }
 
   const coverUrl = getCoverUrl(game);
-  const hasBar = result === "winner" || result === "wrong-pick";
-
   return (
     <div className={["relative flex h-12 items-center gap-2.5 px-2", rowStyles[result]].join(" ")}>
-      {hasBar && (
-        <span
-          className={[
-            "absolute inset-y-1.5 left-0 w-[3px] rounded-r-full",
-            result === "winner" ? "bg-correct" : "bg-wrong"
-          ].join(" ")}
-          aria-hidden="true"
-        />
-      )}
-
       <div
         className={[
-          "relative h-10 w-[30px] shrink-0 overflow-hidden rounded-[4px] bg-bg-base ring-1 ring-white/10",
+          "relative h-10 w-[30px] shrink-0 overflow-hidden rounded-[4px] bg-bg-base ring-1 ring-line",
           result === "loser" ? "grayscale" : ""
         ].join(" ")}
       >
@@ -117,7 +105,7 @@ function MatchSlot({
         >
           {game.name}
         </p>
-        <p className="truncate text-[11px] leading-none text-text-secondary">
+        <p className="truncate text-xs leading-none text-text-secondary">
           {game.year ?? "—"}
           {result === "wrong-pick" && <span className="font-semibold text-wrong"> · Your pick</span>}
         </p>
@@ -126,7 +114,7 @@ function MatchSlot({
       {revealScores && (
         <span
           className={[
-            "shrink-0 font-display text-lg leading-none tabular-nums",
+            "tabular shrink-0 font-display text-lg leading-none",
             result === "winner" || result === "missed" ? "text-accent" : "text-text-secondary"
           ].join(" ")}
         >
@@ -156,17 +144,17 @@ export function BracketMatchCard({
       role="group"
       aria-label={`Round ${match.round}: ${topGame?.name ?? "TBD"} vs ${bottomGame?.name ?? "TBD"}`}
       className={[
-        "relative w-full rounded-lg border bg-bg-elevated/95 shadow-[0_12px_28px_rgba(0,0,0,0.35)]",
+        "relative w-full rounded-lg border bg-bg-elevated shadow-[0_12px_28px_-8px_rgba(0,0,0,0.5)]",
         isLive
-          ? "border-accent shadow-[0_0_0_3px_rgba(245,158,11,0.16),0_0_28px_rgba(245,158,11,0.3)]"
+          ? "border-accent shadow-[0_12px_32px_-8px_var(--color-accent-glow)]"
           : match.isCorrect === false
             ? "border-wrong/60"
-            : "border-white/10",
+            : "border-line-strong",
         isDimmed ? "opacity-55" : ""
       ].join(" ")}
     >
       {isLive && (
-        <span className="absolute -top-2.5 left-2.5 z-10 flex items-center gap-1 rounded-full bg-accent px-2 py-[3px] text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-bg-deep">
+        <span className="absolute -top-2.5 left-2.5 z-10 flex items-center gap-1 rounded-full bg-accent px-2 py-[3px] text-[11px] font-semibold leading-none text-bg-deep">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-bg-deep" aria-hidden="true" />
           Now playing
         </span>
@@ -174,7 +162,7 @@ export function BracketMatchCard({
 
       <div className="overflow-hidden rounded-[7px]">
         <MatchSlot game={topGame} result={getSlotResult(match, topGame)} revealScores={revealScores} />
-        <div className="h-px bg-white/[0.07]" />
+        <div className="h-px bg-line" />
         <MatchSlot game={bottomGame} result={getSlotResult(match, bottomGame)} revealScores={revealScores} />
       </div>
     </div>

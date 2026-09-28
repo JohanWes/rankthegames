@@ -29,8 +29,8 @@ type BracketOverlayProps = {
 
 function getSegmentClass(match: BracketMatch) {
   if (match.status === "done") return match.isCorrect === false ? "bg-wrong" : "bg-correct";
-  if (match.status === "live") return "bg-accent shadow-[0_0_10px_rgba(245,158,11,0.6)]";
-  return "bg-white/10";
+  if (match.status === "live") return "bg-accent";
+  return "bg-line-strong";
 }
 
 function ProgressStrip({ model }: { model: BracketModel }) {
@@ -113,26 +113,22 @@ export function BracketOverlay({
             aria-modal="true"
             aria-labelledby="bracket-title"
             className="fixed inset-0 z-50 flex flex-col bg-bg-deep/95 backdrop-blur-md"
-            style={{
-              backgroundImage:
-                "radial-gradient(ellipse 60% 50% at 50% 45%, rgba(245,158,11,0.07), transparent 70%)"
-            }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
             onUpdate={forceFrameloopAnimation}
           >
-            <header className="shrink-0 border-b border-white/[0.06] px-4 pt-3 pb-3 md:px-8 md:pt-5">
+            <header className="shrink-0 border-b border-line px-4 pt-3 pb-3 md:px-8 md:pt-5">
               <div className="mx-auto flex max-w-6xl items-center gap-4">
                 <div className="min-w-0 flex-1">
                   <h2
                     id="bracket-title"
-                    className="font-display text-3xl leading-none text-text-primary md:text-4xl"
+                    className="font-display text-4xl font-semibold uppercase leading-none text-text-primary md:text-5xl"
                   >
                     Bracket
                   </h2>
-                  <p className="mt-1 truncate text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary">
+                  <p className="mt-1 truncate text-sm font-medium text-text-secondary">
                     {getSubtitle(model, currentRound, games)}
                   </p>
                 </div>
@@ -142,7 +138,7 @@ export function BracketOverlay({
                   type="button"
                   onClick={onClose}
                   aria-label="Close bracket"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-bg-elevated/80 text-text-secondary transition-colors hover:border-white/25 hover:text-text-primary focus-visible:outline-2 focus-visible:outline-accent"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line-strong bg-bg-elevated text-text-secondary transition-colors hover:border-white/30 hover:text-text-primary"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

@@ -88,7 +88,7 @@ export function BracketTree({ model, games, revealScores, isRunOver }: BracketTr
       <div
         key={key}
         className={[
-          "text-center font-display text-lg uppercase leading-none tracking-[0.18em]",
+          "text-center font-display text-lg uppercase leading-none tracking-[0.06em]",
           isCurrent ? "text-accent" : "text-text-secondary"
         ].join(" ")}
         style={{ width: COLUMN_WIDTH }}

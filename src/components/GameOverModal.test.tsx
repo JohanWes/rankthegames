@@ -17,14 +17,14 @@ describe("GameOverModal", () => {
     render(
       <GameOverModal streak={8} highScore={8} isNewHighScore onPlayAgain={() => {}} />
     );
-    expect(screen.getByText("NEW HIGH SCORE!")).toBeInTheDocument();
+    expect(screen.getByText("New high score")).toBeInTheDocument();
   });
 
   it("does not show NEW HIGH SCORE badge when isNewHighScore is false", () => {
     render(
       <GameOverModal streak={3} highScore={8} isNewHighScore={false} onPlayAgain={() => {}} />
     );
-    expect(screen.queryByText("NEW HIGH SCORE!")).not.toBeInTheDocument();
+    expect(screen.queryByText("New high score")).not.toBeInTheDocument();
   });
 
   it("calls onPlayAgain when PLAY AGAIN button is clicked", async () => {
@@ -42,7 +42,7 @@ describe("GameOverModal", () => {
     render(
       <GameOverModal streak={3} highScore={5} isNewHighScore={false} onPlayAgain={() => {}} />
     );
-    expect(screen.getByText("View Leaderboard")).toBeInTheDocument();
+    expect(screen.getByText("View leaderboard")).toBeInTheDocument();
   });
 
   it("is a modal dialog with PLAY AGAIN focused", () => {

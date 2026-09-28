@@ -15,6 +15,21 @@ type GameOverModalProps = {
   onPlayAgain: () => void;
 };
 
+function MatchupRow({ name, score, isWinner }: { name: string; score: number; isWinner: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-2.5">
+      <span className={`truncate ${isWinner ? "font-medium text-text-primary" : "text-text-secondary"}`}>
+        {name}
+      </span>
+      <span
+        className={`tabular font-display text-2xl leading-none ${isWinner ? "text-correct" : "text-text-secondary"}`}
+      >
+        {score}
+      </span>
+    </div>
+  );
+}
+
 export function GameOverModal({
   streak,
   highScore,
@@ -22,82 +37,64 @@ export function GameOverModal({
   lostMatch = null,
   onPlayAgain
 }: GameOverModalProps) {
+  const leftWins = lostMatch ? lostMatch.leftScore >= lostMatch.rightScore : false;
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="game-over-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-bg-overlay backdrop-blur-sm"
     >
-      <div className="glass mx-4 w-full max-w-md rounded-3xl p-8 text-center">
-        {/* Title */}
-        <h2 id="game-over-title" className="font-display text-5xl font-bold text-wrong">
+      <div className="mx-4 w-full max-w-sm rounded-2xl border border-line bg-bg-elevated p-6 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.7)] sm:p-8">
+        <h2 id="game-over-title" className="text-center font-display text-4xl font-medium leading-none text-text-secondary">
           GAME OVER
         </h2>
 
-        {/* Streak */}
-        <div className="mt-6">
-          <p className="text-sm uppercase tracking-widest text-text-secondary">
-            Streak
-          </p>
-          <p className="font-display text-7xl font-bold text-text-primary">
-            {streak}
+        <div className="mt-4 text-center">
+          <p className="tabular font-display text-8xl font-semibold leading-[0.8] text-text-primary">{streak}</p>
+          <p className="mt-2 text-sm font-medium text-text-secondary">
+            {streak === 1 ? "correct pick" : "correct picks"}
           </p>
         </div>
 
-        {/* New high score */}
-        {isNewHighScore && (
-          <div className="mt-4">
-            <span className="inline-block rounded-full bg-gold/20 px-4 py-1.5 font-display text-lg font-bold uppercase tracking-wider text-gold">
-              NEW HIGH SCORE!
+        <div className="mt-5 flex items-center justify-center gap-2 text-sm">
+          {isNewHighScore ? (
+            <span className="rounded-md bg-gold px-2 py-1 font-semibold leading-none text-bg-deep">New high score</span>
+          ) : (
+            <span className="text-text-secondary">
+              Best <span className="tabular font-semibold text-text-primary">{highScore}</span>
             </span>
-          </div>
-        )}
-
-        {/* High score */}
-        <p className="mt-4 text-text-secondary">
-          Best: <span className="font-semibold text-text-primary">{highScore}</span>
-        </p>
+          )}
+        </div>
 
         {lostMatch && (
-          <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">
-              Revealed MMR
-            </p>
-            <div className="mt-3 space-y-2 text-sm">
-              <div className="flex items-center justify-between gap-4">
-                <span className="truncate text-text-secondary">{lostMatch.leftName}</span>
-                <span className="font-display text-xl font-bold text-text-primary">
-                  {lostMatch.leftScore}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="truncate text-text-secondary">{lostMatch.rightName}</span>
-                <span className="font-display text-xl font-bold text-text-primary">
-                  {lostMatch.rightScore}
-                </span>
-              </div>
+          <div className="mt-6 border-t border-line pt-4">
+            <p className="text-sm font-medium text-text-secondary">Final matchup · rating</p>
+            <div className="mt-1 divide-y divide-line">
+              <MatchupRow name={lostMatch.leftName} score={lostMatch.leftScore} isWinner={leftWins} />
+              <MatchupRow name={lostMatch.rightName} score={lostMatch.rightScore} isWinner={!leftWins} />
             </div>
           </div>
         )}
 
-        {/* Play again */}
         <button
           type="button"
           onClick={onPlayAgain}
           autoFocus
-          className="mt-8 w-full rounded-full border border-accent/60 bg-accent/10 px-8 py-3 font-display text-xl font-bold text-accent transition-all hover:bg-accent/20 hover:border-accent"
+          className="btn-primary mt-6 w-full pt-3.5 pb-3 text-2xl"
         >
           PLAY AGAIN
         </button>
 
-        {/* Leaderboard link */}
-        <Link
-          href="/leaderboard"
-          className="mt-4 inline-block text-sm text-text-secondary underline underline-offset-4 transition-colors hover:text-accent"
-        >
-          View Leaderboard
-        </Link>
+        <div className="mt-4 text-center">
+          <Link
+            href="/leaderboard"
+            className="text-sm font-medium text-text-secondary underline decoration-line-strong underline-offset-4 transition-colors hover:text-text-primary hover:decoration-accent"
+          >
+            View leaderboard
+          </Link>
+        </div>
       </div>
     </div>
   );

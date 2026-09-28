@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Teko } from "next/font/google";
+import { Barlow, Teko } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
-const inter = Inter({
+const barlow = Barlow({
   subsets: ["latin"],
-  variable: "--font-inter"
+  variable: "--font-barlow",
+  weight: ["400", "500", "600", "700"]
 });
 
 const teko = Teko({
@@ -30,8 +31,8 @@ type RootLayoutProps = Readonly<{
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en" className={`${inter.variable} ${teko.variable}`}>
-      <body className="bg-bg-deep text-text-primary min-h-screen font-body antialiased">
+    <html lang="en" className={`${barlow.variable} ${teko.variable}`}>
+      <body className="text-text-primary min-h-screen font-body antialiased">
         {children}
         <Analytics />
       </body>

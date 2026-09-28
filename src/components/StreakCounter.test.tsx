@@ -42,11 +42,11 @@ describe("StreakCounter", () => {
 
   it("shows NEW BEST badge when isNewHighScore and streak > previousStreak", () => {
     render(<StreakCounter streak={6} previousStreak={5} isNewHighScore />);
-    expect(screen.getByText("NEW BEST!")).toBeInTheDocument();
+    expect(screen.getByText("New best")).toBeInTheDocument();
   });
 
   it("does not show NEW BEST badge when streak <= previousStreak", () => {
     render(<StreakCounter streak={3} previousStreak={5} isNewHighScore />);
-    expect(screen.queryByText("NEW BEST!")).not.toBeInTheDocument();
+    expect(screen.queryByText("New best")).not.toBeInTheDocument();
   });
 });

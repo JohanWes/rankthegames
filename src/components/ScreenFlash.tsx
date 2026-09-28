@@ -12,9 +12,9 @@ export function ScreenFlash({ type }: ScreenFlashProps) {
   // Correct: subtle edge radial gradients (top + bottom)
   // Incorrect: center radial gradient
   const gradient = isCorrect
-    ? `radial-gradient(ellipse 120% 40% at 50% 0%, rgba(34, 197, 94, 0.15), transparent 60%),
-       radial-gradient(ellipse 120% 40% at 50% 100%, rgba(34, 197, 94, 0.15), transparent 60%)`
-    : "radial-gradient(ellipse at center, rgba(239, 68, 68, 0.2), transparent 70%)";
+    ? `radial-gradient(ellipse 120% 40% at 50% 0%, var(--color-correct-glow), transparent 60%),
+       radial-gradient(ellipse 120% 40% at 50% 100%, var(--color-correct-glow), transparent 60%)`
+    : "radial-gradient(ellipse at center, var(--color-wrong-glow), transparent 70%)";
 
   const animClass = isCorrect ? "animate-flash-correct" : "animate-flash-incorrect";
 

@@ -27,7 +27,7 @@ export function BracketRoundTabs({ model, games, revealScores, isRunOver }: Brac
       <div
         role="tablist"
         aria-label="Bracket stages"
-        className="mx-4 mt-3 grid shrink-0 grid-cols-4 gap-1 rounded-xl border border-white/10 bg-bg-base/80 p-1"
+        className="mx-4 mt-3 grid shrink-0 grid-cols-4 gap-1 rounded-xl border border-line bg-bg-base p-1"
       >
         {model.stages.map((stage) => {
           const isActive = stage.id === activeStage.id;
@@ -48,7 +48,7 @@ export function BracketRoundTabs({ model, games, revealScores, isRunOver }: Brac
                 isActive ? "bg-accent/15 text-accent" : "text-text-secondary hover:text-text-primary"
               ].join(" ")}
             >
-              <span className="font-display text-lg uppercase leading-none tracking-[0.1em]">
+              <span className="font-display text-lg uppercase leading-none tracking-[0.04em]">
                 {stage.shortTitle}
               </span>
               <span className="mt-0.5 text-[10px] font-semibold tabular-nums leading-none opacity-75">
@@ -80,7 +80,7 @@ export function BracketRoundTabs({ model, games, revealScores, isRunOver }: Brac
             exit={{ opacity: 0, x: -12 }}
             transition={{ duration: 0.16, ease: "easeOut" }}
           >
-            <h3 className="font-display text-2xl uppercase leading-none tracking-[0.14em] text-text-secondary">
+            <h3 className="font-display text-2xl uppercase leading-none tracking-[0.04em] text-text-primary">
               {activeStage.title}
             </h3>
 

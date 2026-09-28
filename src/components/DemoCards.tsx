@@ -1,8 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
+
+import { CoverPlaceholder } from "@/components/CoverPlaceholder";
+import { VsMark } from "@/components/VsMark";
 
 type DemoPhase = "idle" | "focus-left" | "focus-right" | "winner";
 
@@ -33,7 +36,6 @@ const PHASE_ORDER: DemoPhase[] = [
   "winner",
 ];
 
-// Minimal cursor SVG — a clean angled pointer
 function CursorIcon() {
   return (
     <svg
@@ -51,37 +53,6 @@ function CursorIcon() {
         strokeLinejoin="round"
       />
     </svg>
-  );
-}
-
-function GamepadFallback({ name }: { name: string }) {
-  return (
-    <div
-      className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3"
-      style={{
-        background:
-          "linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(0,240,255,0.1) 100%), #161B22",
-      }}
-    >
-      <svg
-        width="32"
-        height="32"
-        viewBox="0 0 64 64"
-        fill="none"
-        className="opacity-30"
-      >
-        <path
-          d="M20 18H44C50.627 18 56 23.373 56 30V34C56 40.627 50.627 46 44 46H20C13.373 46 8 40.627 8 34V30C8 23.373 13.373 18 20 18Z"
-          stroke="currentColor"
-          strokeWidth="2"
-        />
-        <circle cx="22" cy="32" r="3" fill="currentColor" />
-        <circle cx="42" cy="32" r="2.5" fill="currentColor" />
-      </svg>
-      <span className="text-center font-display text-sm font-semibold text-text-secondary">
-        {name}
-      </span>
-    </div>
   );
 }
 
@@ -106,7 +77,7 @@ function DemoCard({
           opacity: isFocused || isWinner ? 1 : 0.85,
         }}
         transition={{ type: "spring", stiffness: 300, damping: 22 }}
-        className="relative aspect-[3/4] w-[160px] overflow-hidden rounded-xl border-2 border-white/10 bg-bg-elevated sm:w-[200px] md:w-[300px] lg:w-[380px]"
+        className="relative aspect-[3/4] w-[min(36vw,160px)] overflow-hidden rounded-xl border border-line bg-bg-elevated sm:w-[200px] md:w-[300px] lg:w-[380px]"
       >
         {!imgError ? (
           <Image
@@ -119,50 +90,32 @@ function DemoCard({
             onError={() => setImgError(true)}
           />
         ) : (
-          <GamepadFallback name={game.name} />
+          <CoverPlaceholder name={game.name} iconSize={32} />
         )}
       </motion.div>
 
-      {/* Amber selection ring */}
       <motion.div
         animate={{ opacity: isFocused && !isWinner ? 1 : 0 }}
         transition={{ duration: 0.3 }}
-        className="pointer-events-none absolute inset-0 rounded-xl border-2 border-accent glow-accent-box"
+        className="pointer-events-none absolute inset-0 rounded-xl border-2 border-accent"
       />
 
-      {/* Green winner ring */}
       <motion.div
         animate={{ opacity: isWinner ? 1 : 0 }}
         transition={{ duration: 0.25 }}
-        className="pointer-events-none absolute inset-0 rounded-xl border-2 border-correct neon-glow-green"
+        className="pointer-events-none absolute inset-0 rounded-xl border-2 border-correct result-glow-correct"
       />
     </div>
   );
 }
 
-export type { DemoPhase };
-
-export function DemoCards({
-  className,
-  onPhaseChange,
-}: {
-  className?: string;
-  onPhaseChange?: (phase: DemoPhase) => void;
-}) {
+export function DemoCards({ className }: { className?: string }) {
   const [phase, setPhase] = useState<DemoPhase>("idle");
   const [reducedMotion, setReducedMotion] = useState(false);
   const leftCardRef = useRef<HTMLDivElement>(null);
   const rightCardRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [cursorTarget, setCursorTarget] = useState({ x: 0, y: 0 });
-  const onPhaseChangeRef = useRef(onPhaseChange);
-  onPhaseChangeRef.current = onPhaseChange;
-
-  const advancePhase = useCallback((nextPhase: DemoPhase) => {
-    setPhase(nextPhase);
-    onPhaseChangeRef.current?.(nextPhase);
-  }, []);
-
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (mq.matches) {
@@ -176,14 +129,14 @@ export function DemoCards({
     function tick() {
       phaseIndex = (phaseIndex + 1) % PHASE_ORDER.length;
       const nextPhase = PHASE_ORDER[phaseIndex];
-      advancePhase(nextPhase);
+      setPhase(nextPhase);
       timeoutId = setTimeout(tick, PHASE_DURATIONS[nextPhase]);
     }
 
     timeoutId = setTimeout(tick, PHASE_DURATIONS[PHASE_ORDER[0]]);
 
     return () => clearTimeout(timeoutId);
-  }, [advancePhase]);
+  }, []);
 
   // Update cursor position based on phase
   useEffect(() => {
@@ -225,7 +178,7 @@ export function DemoCards({
   return (
     <div
       ref={containerRef}
-      className={`relative flex items-center justify-center gap-4 md:gap-6 ${className ?? ""}`}
+      className={`relative flex items-center justify-center gap-3 sm:gap-4 md:gap-6 ${className ?? ""}`}
     >
       <div ref={leftCardRef}>
         <DemoCard
@@ -235,12 +188,7 @@ export function DemoCards({
         />
       </div>
 
-      {/* VS indicator */}
-      <div className="glass flex h-8 w-8 items-center justify-center rounded-full md:h-10 md:w-10">
-        <span className="glow-accent-text font-display text-xs font-bold text-accent md:text-sm">
-          VS
-        </span>
-      </div>
+      <VsMark size="sm" className="md:h-10 md:w-10 md:text-lg" />
 
       <div ref={rightCardRef}>
         <DemoCard
